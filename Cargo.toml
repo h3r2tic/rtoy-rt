@@ -5,7 +5,8 @@ authors = ["Tomasz Stachowiak <h3@h3.gd>"]
 edition = "2018"
 
 [dependencies]
-rendertoy = { path = "../rendertoy" }
+rendertoy = { git = "https://github.com/h3r2tic/rendertoy" }
+#rendertoy = { path = "../rendertoy" }
 snoozy = { git = "https://github.com/h3r2tic/snoozy" }
 bvh = { git = "https://github.com/h3r2tic/bvh", branch = "immutable-build" }
 static_assertions = "0.3.1"
