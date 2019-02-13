@@ -14,11 +14,82 @@ struct GpuBvhNode {
     packed: [u32; 4],
 }
 
+// `f32_to_f16` from the `half`crate, with a different rounding behavior:
+// Round strictly towards smaller values (never a positive offset).
+pub fn f32_to_f16_negbias(value: f32) -> u16 {
+    // Convert to raw bytes
+    let x: u32 = unsafe { core::mem::transmute(value) };
+
+    // Check for signed zero
+    if x & 0x7FFFFFFFu32 == 0 {
+        return (x >> 16) as u16;
+    }
+
+    // Extract IEEE754 components
+    let sign = x & 0x80000000u32;
+    let exp = x & 0x7F800000u32;
+    let man = x & 0x007FFFFFu32;
+
+    // Subnormals will underflow, so return signed zero
+    if exp == 0 {
+        return (sign >> 16) as u16;
+    }
+
+    // Check for all exponent bits being set, which is Infinity or NaN
+    if exp == 0x7F800000u32 {
+        // A mantissa of zero is a signed Infinity
+        if man == 0 {
+            return ((sign >> 16) | 0x7C00u32) as u16;
+        }
+        // Otherwise, this is NaN
+        return ((sign >> 16) | 0x7E00u32) as u16;
+    }
+
+    // The number is normalized, start assembling half precision version
+    let half_sign = sign >> 16;
+    // Unbias the exponent, then bias for half precision
+    let unbiased_exp = ((exp >> 23) as i32) - 127;
+    let half_exp = unbiased_exp + 15;
+
+    // Check for exponent overflow, return +infinity
+    if half_exp >= 0x1F {
+        return (half_sign | 0x7C00u32) as u16;
+    }
+
+    // Check for underflow
+    if half_exp <= 0 {
+        // Check mantissa for what we can do
+        if 14 - half_exp > 24 {
+            // No rounding possibility, so this is a full underflow, return signed zero
+            return half_sign as u16;
+        }
+        // Don't forget about hidden leading mantissa bit when assembling mantissa
+        let man = man | 0x00800000u32;
+        let mut half_man = man >> (14 - half_exp);
+        // Check for rounding
+        if (man >> (13 - half_exp)) & 0x1u32 != 0 {
+            half_man += 1;
+        }
+        // No exponent for subnormals
+        return (half_sign | half_man) as u16;
+    }
+
+    // Rebias the exponent
+    let half_exp = (half_exp as u32) << 10;
+    let half_man = man >> 13;
+
+    if sign != 0 {
+        ((half_sign | half_exp | half_man) + 1) as u16
+    } else {
+        (half_sign | half_exp | half_man) as u16
+    }
+}
+
 fn pack_gpu_bvh_node(node: BvhNode) -> GpuBvhNode {
     let bmin = (
-        half::f16::from_f32(node.bbox_min.x),
-        half::f16::from_f32(node.bbox_min.y),
-        half::f16::from_f32(node.bbox_min.z),
+        half::f16::from_bits(f32_to_f16_negbias(node.bbox_min.x)),
+        half::f16::from_bits(f32_to_f16_negbias(node.bbox_min.y)),
+        half::f16::from_bits(f32_to_f16_negbias(node.bbox_min.z)),
     );
 
     let box_extent_packed = {
@@ -26,7 +97,7 @@ fn pack_gpu_bvh_node(node: BvhNode) -> GpuBvhNode {
         let extent =
             node.bbox_max - Vector3::new(bmin.0.to_f32(), bmin.1.to_f32(), bmin.2.to_f32());
 
-        pack_rgb9e5(extent.x, extent.y, extent.z)
+        pack_rgb9e5_roundup(extent.x, extent.y, extent.z)
     };
 
     assert!(node.exit_idx < (1u32 << 24));
