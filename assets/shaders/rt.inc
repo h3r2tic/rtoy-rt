@@ -185,3 +185,45 @@ bool raytrace(Ray r, inout RtHit hit) {
 
     return false;
 }
+
+bool raytrace_intersects_any(Ray r) {
+    uint node_idx = 0;
+    {
+        vec3 absdir = abs(r.d);
+        float maxcomp = max(absdir.x, max(absdir.y, absdir.z));
+        if (absdir.x == maxcomp) {
+            node_idx = r.d.x > 0.0 ? 0 : 1;
+        } else if (absdir.y == maxcomp) {
+            node_idx = r.d.y > 0.0 ? 2 : 3;
+        } else if (absdir.z == maxcomp) {
+            node_idx = r.d.z > 0.0 ? 4 : 5;
+        }
+        node_idx *= bvh_node_count;
+    }
+
+    uint end_idx = node_idx + bvh_node_count;
+    
+    uint iter = 0;
+    for (; iter < 1024 && node_idx < end_idx; ++iter) {
+        BvhNode node = unpack_bvh_node(bvh_nodes[node_idx]);
+        bool intersects_box = intersect_ray_aabb(r, node.box_min, node.box_max, 1.0e10);
+
+        bool is_leaf = node.prim_idx != INVALID_TRIANGLE_INDEX;
+
+        if (intersects_box && is_leaf) {
+            float tmin = 1.0e10;
+            vec3 barycentric;
+            if (intersect_ray_tri(r, unpack_triangle(bvh_triangles[node.prim_idx]), tmin, barycentric)) {
+                return true;
+            }
+        }
+
+        if (is_leaf || intersects_box) {
+            node_idx += 1;
+        } else {
+            node_idx += node.exit_idx;
+        }
+    }
+
+    return false;
+}
