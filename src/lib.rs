@@ -2,6 +2,8 @@ use rendertoy::*;
 
 #[macro_use]
 extern crate static_assertions;
+#[macro_use]
+extern crate snoozy_macros;
 
 use bvh::{
     aabb::AABB,
@@ -223,73 +225,72 @@ fn convert_bvh<BoxOrderFn>(
     }
 }
 
-snoozy! {
-    fn build_gpu_bvh(
-        ctx: &mut Context,
-        mesh: &SnoozyRef<Vec<Triangle>>
-    ) -> Result<ShaderUniformBundle> {
-        let mesh = ctx.get(mesh)?;
-        let aabbs: Vec<AABB> = mesh
-            .iter()
-            .map(|t| AABB::empty().grow(&t.a).grow(&t.b).grow(&t.c))
-            .collect();
-
-        let time0 = std::time::Instant::now();
-        let bvh = BVH::build(&aabbs);
-        println!("BVH built in {:?}", time0.elapsed());
-
-        let orderings = (
-            |a: &AABB, b: &AABB| a.min.x + a.max.x < b.min.x + b.max.x,
-            |a: &AABB, b: &AABB| a.min.x + a.max.x > b.min.x + b.max.x,
-            |a: &AABB, b: &AABB| a.min.y + a.max.y < b.min.y + b.max.y,
-            |a: &AABB, b: &AABB| a.min.y + a.max.y > b.min.y + b.max.y,
-            |a: &AABB, b: &AABB| a.min.z + a.max.z < b.min.z + b.max.z,
-            |a: &AABB, b: &AABB| a.min.z + a.max.z > b.min.z + b.max.z,
+macro_rules! ordered_flatten_bvh {
+    ($order: expr, $bvh:ident, $bvh_nodes:ident) => {{
+        convert_bvh(
+            0,
+            &AABB::default(),
+            $bvh.nodes.as_slice(),
+            &$order,
+            &mut $bvh_nodes,
         );
+    }};
+}
 
-        let time0 = std::time::Instant::now();
+#[snoozy]
+pub fn build_gpu_bvh(
+    ctx: &mut Context,
+    mesh: &SnoozyRef<Vec<Triangle>>,
+) -> Result<ShaderUniformBundle> {
+    let mesh = ctx.get(mesh)?;
+    let aabbs: Vec<AABB> = mesh
+        .iter()
+        .map(|t| AABB::empty().grow(&t.a).grow(&t.b).grow(&t.c))
+        .collect();
 
-        let mut bvh_nodes: Vec<BvhNode> = Vec::with_capacity(bvh.nodes.len() * 6);
+    let time0 = std::time::Instant::now();
+    let bvh = BVH::build(&aabbs);
+    println!("BVH built in {:?}", time0.elapsed());
 
-        macro_rules! ordered_flatten_bvh {
-            ($order: expr) => {{
-                convert_bvh(
-                    0,
-                    &AABB::default(),
-                    bvh.nodes.as_slice(),
-                    &$order,
-                    &mut bvh_nodes,
-                );
-            }};
-        }
+    let orderings = (
+        |a: &AABB, b: &AABB| a.min.x + a.max.x < b.min.x + b.max.x,
+        |a: &AABB, b: &AABB| a.min.x + a.max.x > b.min.x + b.max.x,
+        |a: &AABB, b: &AABB| a.min.y + a.max.y < b.min.y + b.max.y,
+        |a: &AABB, b: &AABB| a.min.y + a.max.y > b.min.y + b.max.y,
+        |a: &AABB, b: &AABB| a.min.z + a.max.z < b.min.z + b.max.z,
+        |a: &AABB, b: &AABB| a.min.z + a.max.z > b.min.z + b.max.z,
+    );
 
-        ordered_flatten_bvh!(orderings.0);
-        ordered_flatten_bvh!(orderings.1);
-        ordered_flatten_bvh!(orderings.2);
-        ordered_flatten_bvh!(orderings.3);
-        ordered_flatten_bvh!(orderings.4);
-        ordered_flatten_bvh!(orderings.5);
+    let time0 = std::time::Instant::now();
 
-        println!("BVH flattened in {:?}", time0.elapsed());
-        let time0 = std::time::Instant::now();
+    let mut bvh_nodes: Vec<BvhNode> = Vec::with_capacity(bvh.nodes.len() * 6);
 
-        let gpu_bvh_nodes: Vec<_> = bvh_nodes.into_iter().map(pack_gpu_bvh_node).collect();
+    ordered_flatten_bvh!(orderings.0, bvh, bvh_nodes);
+    ordered_flatten_bvh!(orderings.1, bvh, bvh_nodes);
+    ordered_flatten_bvh!(orderings.2, bvh, bvh_nodes);
+    ordered_flatten_bvh!(orderings.3, bvh, bvh_nodes);
+    ordered_flatten_bvh!(orderings.4, bvh, bvh_nodes);
+    ordered_flatten_bvh!(orderings.5, bvh, bvh_nodes);
 
-        let bvh_triangles = mesh
-            .iter()
-            .map(|t| GpuTriangle {
-                v: t.a,
-                e0: t.b - t.a,
-                e1: t.c - t.a,
-            })
-            .collect::<Vec<_>>();
+    println!("BVH flattened in {:?}", time0.elapsed());
+    let time0 = std::time::Instant::now();
 
-        println!("BVH encoded in {:?}", time0.elapsed());
+    let gpu_bvh_nodes: Vec<_> = bvh_nodes.into_iter().map(pack_gpu_bvh_node).collect();
 
-        Ok(shader_uniforms!(
-            "bvh_meta_buf": upload_buffer(to_byte_vec(vec![(gpu_bvh_nodes.len() / 6) as u32])),
-            "bvh_nodes_buf": upload_buffer(to_byte_vec(gpu_bvh_nodes)),
-            "bvh_triangles_buf": upload_buffer(to_byte_vec(bvh_triangles)),
-        ))
-    }
+    let bvh_triangles = mesh
+        .iter()
+        .map(|t| GpuTriangle {
+            v: t.a,
+            e0: t.b - t.a,
+            e1: t.c - t.a,
+        })
+        .collect::<Vec<_>>();
+
+    println!("BVH encoded in {:?}", time0.elapsed());
+
+    Ok(shader_uniforms!(
+        "bvh_meta_buf": upload_array_buffer(vec![(gpu_bvh_nodes.len() / 6) as u32]),
+        "bvh_nodes_buf": upload_array_buffer(gpu_bvh_nodes),
+        "bvh_triangles_buf": upload_array_buffer(bvh_triangles),
+    ))
 }
