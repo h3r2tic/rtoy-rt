@@ -4,16 +4,25 @@ use rendertoy::*;
 extern crate static_assertions;
 #[macro_use]
 extern crate snoozy_macros;
+#[macro_use]
+extern crate serde_derive;
+extern crate speedy;
+#[macro_use]
+extern crate speedy_derive;
+#[macro_use]
+extern crate abomonation_derive;
+
+use snoozy::DerpySerialization;
 
 use bvh::{
     aabb::AABB,
     bvh::{BVHNode, BVH},
 };
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Serialize, Deserialize, Readable, Writable, Abomonation)]
 #[repr(C)]
-struct GpuBvhNode {
-    packed: [u32; 4],
+pub struct GpuBvhNode {
+    packed: (u32, u32, u32, u32),
 }
 
 // `f32_to_f16` from the `half`crate, with a different rounding behavior:
@@ -106,16 +115,16 @@ fn pack_gpu_bvh_node(node: BvhNode) -> GpuBvhNode {
     assert!(node.prim_idx == std::u32::MAX || node.prim_idx < (1u32 << 24));
 
     GpuBvhNode {
-        packed: [
+        packed: (
             box_extent_packed,
             ((bmin.0.to_bits() as u32) << 16) | (bmin.1.to_bits() as u32),
             ((bmin.2.to_bits() as u32) << 16) | ((node.prim_idx >> 8) & 0xffff),
             ((node.prim_idx & 0xff) << 24) | node.exit_idx,
-        ],
+        ),
     }
 }
 
-struct BvhNode {
+pub struct BvhNode {
     bbox_min: Point3,
     exit_idx: u32,
     bbox_max: Point3,
@@ -150,12 +159,12 @@ impl BvhNode {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Serialize, Deserialize, Readable, Writable, Abomonation)]
 #[repr(C)]
-struct GpuTriangle {
-    v: Point3,
-    e0: Vector3,
-    e1: Vector3,
+pub struct GpuTriangle {
+    v: (f32, f32, f32),
+    e0: (f32, f32, f32),
+    e1: (f32, f32, f32),
 }
 
 assert_eq_size!(triangle_size_check; GpuTriangle, [u8; 9 * 4]);
@@ -237,11 +246,72 @@ macro_rules! ordered_flatten_bvh {
     }};
 }
 
+#[derive(Clone, Serialize, Deserialize, Readable, Writable, Abomonation)]
+pub struct GpuBvh {
+    nodes: Vec<GpuBvhNode>,
+    triangles: Vec<GpuTriangle>,
+}
+
+pub fn as_byte_slice<'a, T>(v: &'a Vec<T>) -> &'a [u8]
+where
+    T: Copy,
+{
+    unsafe {
+        let p = v.as_ptr();
+        let item_sizeof = std::mem::size_of::<T>();
+        let len = v.len() * item_sizeof;
+        std::slice::from_raw_parts(p as *const u8, len)
+    }
+}
+
+pub fn from_byte_slice<T>(len: usize, v: &[u8]) -> (Vec<T>, usize)
+where
+    T: Copy,
+{
+    unsafe {
+        let p = v.as_ptr();
+        let item_sizeof = std::mem::size_of::<T>();
+        (std::slice::from_raw_parts(p as *const T, len).to_vec(), len * item_sizeof)
+    }
+}
+
+impl DerpySerialization for GpuBvh {
+    fn derpy_serialize(&self, s: &mut Vec<u8>) -> bool {
+        unsafe {
+            let len: usize = self.nodes.len();
+            s.extend_from_slice(std::slice::from_raw_parts(&len as *const usize as *const u8, 8));
+            s.extend_from_slice(as_byte_slice(&self.nodes));
+
+            let len: usize = self.triangles.len();
+            s.extend_from_slice(std::slice::from_raw_parts(&len as *const usize as *const u8, 8));
+            s.extend_from_slice(as_byte_slice(&self.triangles));
+        }
+
+        true
+    }
+    fn derpy_deserialize<'a>(s: &'a [u8]) -> Option<Self> {
+        unsafe {
+            let len: usize = *(&s[0] as *const u8 as *const usize);
+            let s = &s[8..];
+
+            let (nodes, skip) = from_byte_slice(len, s);
+            let s = &s[skip..];
+
+            let len: usize = *(&s[0] as *const u8 as *const usize);
+            let s = &s[8..];
+
+            let (triangles, skip) = from_byte_slice(len, s);
+            let _s = &s[skip..];
+
+            Some(Self {
+                nodes, triangles
+            })
+        }
+    }
+}
+
 #[snoozy]
-pub fn build_gpu_bvh(
-    ctx: &mut Context,
-    mesh: &SnoozyRef<Vec<Triangle>>,
-) -> Result<ShaderUniformBundle> {
+pub fn build_gpu_bvh(ctx: &mut Context, mesh: &SnoozyRef<Vec<Triangle>>) -> Result<GpuBvh> {
     let mesh = ctx.get(mesh)?;
     let aabbs: Vec<AABB> = mesh
         .iter()
@@ -279,18 +349,33 @@ pub fn build_gpu_bvh(
 
     let bvh_triangles = mesh
         .iter()
-        .map(|t| GpuTriangle {
-            v: t.a,
-            e0: t.b - t.a,
-            e1: t.c - t.a,
+        .map(|t| {
+            let v = t.a;
+            let e0 = t.b - t.a;
+            let e1 = t.c - t.a;
+            GpuTriangle {
+                v: (v.x, v.y, v.z),
+                e0: (e0.x, e0.y, e0.z),
+                e1: (e1.x, e1.y, e1.z),
+            }
         })
         .collect::<Vec<_>>();
 
     println!("BVH encoded in {:?}", time0.elapsed());
 
+    Ok(GpuBvh {
+        nodes: gpu_bvh_nodes,
+        triangles: bvh_triangles,
+    })
+}
+
+#[snoozy]
+pub fn upload_bvh(ctx: &mut Context, bvh: &SnoozyRef<GpuBvh>) -> Result<ShaderUniformBundle> {
+    let bvh = ctx.get(bvh)?;
+
     Ok(shader_uniforms!(
-        "bvh_meta_buf": upload_array_buffer(vec![(gpu_bvh_nodes.len() / 6) as u32]),
-        "bvh_nodes_buf": upload_array_buffer(gpu_bvh_nodes),
-        "bvh_triangles_buf": upload_array_buffer(bvh_triangles),
+        "bvh_meta_buf": upload_array_buffer(vec![(bvh.nodes.len() / 6) as u32]),
+        "bvh_nodes_buf": upload_array_buffer(bvh.nodes.clone()),
+        "bvh_triangles_buf": upload_array_buffer(bvh.triangles.clone()),
     ))
 }
