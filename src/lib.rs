@@ -6,20 +6,15 @@ extern crate static_assertions;
 extern crate snoozy_macros;
 #[macro_use]
 extern crate serde_derive;
-extern crate speedy;
-#[macro_use]
-extern crate speedy_derive;
 #[macro_use]
 extern crate abomonation_derive;
-
-use snoozy::DerpySerialization;
 
 use bvh::{
     aabb::AABB,
     bvh::{BVHNode, BVH},
 };
 
-#[derive(Clone, Copy, Serialize, Deserialize, Readable, Writable, Abomonation)]
+#[derive(Clone, Copy, Serialize, Deserialize, Abomonation)]
 #[repr(C)]
 pub struct GpuBvhNode {
     packed: (u32, u32, u32, u32),
@@ -159,7 +154,7 @@ impl BvhNode {
     }
 }
 
-#[derive(Clone, Copy, Serialize, Deserialize, Readable, Writable, Abomonation)]
+#[derive(Clone, Copy, Serialize, Deserialize, Abomonation)]
 #[repr(C)]
 pub struct GpuTriangle {
     v: (f32, f32, f32),
@@ -246,68 +241,10 @@ macro_rules! ordered_flatten_bvh {
     }};
 }
 
-#[derive(Clone, Serialize, Deserialize, Readable, Writable, Abomonation)]
+#[derive(Clone, Serialize, Deserialize, Abomonation)]
 pub struct GpuBvh {
     nodes: Vec<GpuBvhNode>,
     triangles: Vec<GpuTriangle>,
-}
-
-pub fn as_byte_slice<'a, T>(v: &'a Vec<T>) -> &'a [u8]
-where
-    T: Copy,
-{
-    unsafe {
-        let p = v.as_ptr();
-        let item_sizeof = std::mem::size_of::<T>();
-        let len = v.len() * item_sizeof;
-        std::slice::from_raw_parts(p as *const u8, len)
-    }
-}
-
-pub fn from_byte_slice<T>(len: usize, v: &[u8]) -> (Vec<T>, usize)
-where
-    T: Copy,
-{
-    unsafe {
-        let p = v.as_ptr();
-        let item_sizeof = std::mem::size_of::<T>();
-        (std::slice::from_raw_parts(p as *const T, len).to_vec(), len * item_sizeof)
-    }
-}
-
-impl DerpySerialization for GpuBvh {
-    fn derpy_serialize(&self, s: &mut Vec<u8>) -> bool {
-        unsafe {
-            let len: usize = self.nodes.len();
-            s.extend_from_slice(std::slice::from_raw_parts(&len as *const usize as *const u8, 8));
-            s.extend_from_slice(as_byte_slice(&self.nodes));
-
-            let len: usize = self.triangles.len();
-            s.extend_from_slice(std::slice::from_raw_parts(&len as *const usize as *const u8, 8));
-            s.extend_from_slice(as_byte_slice(&self.triangles));
-        }
-
-        true
-    }
-    fn derpy_deserialize<'a>(s: &'a [u8]) -> Option<Self> {
-        unsafe {
-            let len: usize = *(&s[0] as *const u8 as *const usize);
-            let s = &s[8..];
-
-            let (nodes, skip) = from_byte_slice(len, s);
-            let s = &s[skip..];
-
-            let len: usize = *(&s[0] as *const u8 as *const usize);
-            let s = &s[8..];
-
-            let (triangles, skip) = from_byte_slice(len, s);
-            let _s = &s[skip..];
-
-            Some(Self {
-                nodes, triangles
-            })
-        }
-    }
 }
 
 #[snoozy]
