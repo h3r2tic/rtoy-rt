@@ -5,8 +5,6 @@ extern crate static_assertions;
 #[macro_use]
 extern crate snoozy_macros;
 #[macro_use]
-extern crate serde_derive;
-#[macro_use]
 extern crate abomonation_derive;
 
 use bvh::{
@@ -14,7 +12,7 @@ use bvh::{
     bvh::{BVHNode, BVH},
 };
 
-#[derive(Clone, Copy, Serialize, Deserialize, Abomonation)]
+#[derive(Clone, Copy, Abomonation)]
 #[repr(C)]
 pub struct GpuBvhNode {
     packed: (u32, u32, u32, u32),
@@ -154,7 +152,7 @@ impl BvhNode {
     }
 }
 
-#[derive(Clone, Copy, Serialize, Deserialize, Abomonation)]
+#[derive(Clone, Copy, Abomonation)]
 #[repr(C)]
 pub struct GpuTriangle {
     v: (f32, f32, f32),
@@ -241,7 +239,7 @@ macro_rules! ordered_flatten_bvh {
     }};
 }
 
-#[derive(Clone, Serialize, Deserialize, Abomonation)]
+#[derive(Clone, Abomonation)]
 pub struct GpuBvh {
     nodes: Vec<GpuBvhNode>,
     triangles: Vec<GpuTriangle>,
