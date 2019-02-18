@@ -304,18 +304,6 @@ pub fn build_gpu_bvh(ctx: &mut Context, mesh: &SnoozyRef<Vec<Triangle>>) -> Resu
     })
 }
 
-/*
-#[snoozy]
-pub fn upload_bvh(ctx: &mut Context, bvh: &SnoozyRef<GpuBvh>) -> Result<ShaderUniformBundle> {
-    let bvh = ctx.get(bvh)?;
-
-    Ok(shader_uniforms!(
-        "bvh_meta_buf": upload_array_buffer(vec![(bvh.nodes.len() / 6) as u32]),
-        "bvh_nodes_buf": upload_array_buffer(bvh.nodes.clone()),
-        "bvh_triangles_buf": upload_array_buffer(bvh.triangles.clone()),
-    ))
-}*/
-
 #[snoozy]
 pub fn upload_bvh(ctx: &mut Context, bvh: &SnoozyRef<GpuBvh>) -> Result<ShaderUniformBundle> {
     let bvh = ctx.get(bvh)?;
