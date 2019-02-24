@@ -5,7 +5,7 @@ authors = ["Tomasz Stachowiak <h3@h3.gd>"]
 edition = "2018"
 
 [dependencies]
-rendertoy = { git = "https://github.com/h3r2tic/rendertoy" }
+rendertoy = { git = "https://github.com/h3r2tic/rendertoy", rev = "f5b269e" }
 #rendertoy = { path = "../rendertoy" }
 snoozy = { git = "https://github.com/h3r2tic/snoozy" }
 #snoozy = { path = "../snoozy" }
