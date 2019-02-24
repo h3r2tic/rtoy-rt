@@ -186,7 +186,7 @@ bool raytrace(Ray r, inout RtHit hit) {
     return false;
 }
 
-bool raytrace_intersects_any(Ray r) {
+bool raytrace_intersects_any(Ray r, float tmax) {
     uint node_idx = 0;
     {
         vec3 absdir = abs(r.d);
@@ -206,14 +206,13 @@ bool raytrace_intersects_any(Ray r) {
     uint iter = 0;
     for (; iter < 1024 && node_idx < end_idx; ++iter) {
         BvhNode node = unpack_bvh_node(bvh_nodes[node_idx]);
-        bool intersects_box = intersect_ray_aabb(r, node.box_min, node.box_max, 1.0e10);
+        bool intersects_box = intersect_ray_aabb(r, node.box_min, node.box_max, tmax);
 
         bool is_leaf = node.prim_idx != INVALID_TRIANGLE_INDEX;
 
         if (intersects_box && is_leaf) {
-            float tmin = 1.0e10;
             vec3 barycentric;
-            if (intersect_ray_tri(r, unpack_triangle(bvh_triangles[node.prim_idx]), tmin, barycentric)) {
+            if (intersect_ray_tri(r, unpack_triangle(bvh_triangles[node.prim_idx]), tmax, barycentric)) {
                 return true;
             }
         }
@@ -226,4 +225,8 @@ bool raytrace_intersects_any(Ray r) {
     }
 
     return false;
+}
+
+bool raytrace_intersects_any(Ray r) {
+    return raytrace_intersects_any(r, 1e10);
 }
