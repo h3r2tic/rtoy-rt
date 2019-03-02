@@ -246,11 +246,17 @@ pub struct GpuBvh {
 }
 
 #[snoozy]
-pub fn build_gpu_bvh(ctx: &mut Context, mesh: &SnoozyRef<Vec<Triangle>>) -> Result<GpuBvh> {
+pub fn build_gpu_bvh(ctx: &mut Context, mesh: &SnoozyRef<TriangleMesh>) -> Result<GpuBvh> {
     let mesh = ctx.get(mesh)?;
     let aabbs: Vec<AABB> = mesh
-        .iter()
-        .map(|t| AABB::empty().grow(&t.a).grow(&t.b).grow(&t.c))
+        .indices
+        .chunks(3)
+        .map(|t| {
+            AABB::empty()
+                .grow(&Point3::from(mesh.positions[t[0] as usize]))
+                .grow(&Point3::from(mesh.positions[t[1] as usize]))
+                .grow(&Point3::from(mesh.positions[t[2] as usize]))
+        })
         .collect();
 
     let time0 = std::time::Instant::now();
@@ -283,13 +289,16 @@ pub fn build_gpu_bvh(ctx: &mut Context, mesh: &SnoozyRef<Vec<Triangle>>) -> Resu
     let gpu_bvh_nodes: Vec<_> = bvh_nodes.into_iter().map(pack_gpu_bvh_node).collect();
 
     let bvh_triangles = mesh
-        .iter()
+        .indices
+        .chunks(3)
         .map(|t| {
-            let v = t.a;
-            let e0 = t.b - t.a;
-            let e1 = t.c - t.a;
+            let v0 = Point3::from(mesh.positions[t[0] as usize]);
+            let v1 = Point3::from(mesh.positions[t[1] as usize]);
+            let v2 = Point3::from(mesh.positions[t[2] as usize]);
+            let e0 = v1 - v0;
+            let e1 = v2 - v0;
             GpuTriangle {
-                v: (v.x, v.y, v.z),
+                v: (v0.x, v0.y, v0.z),
                 e0: (e0.x, e0.y, e0.z),
                 e1: (e1.x, e1.y, e1.z),
             }
@@ -308,8 +317,8 @@ pub fn build_gpu_bvh(ctx: &mut Context, mesh: &SnoozyRef<Vec<Triangle>>) -> Resu
 pub fn upload_bvh(ctx: &mut Context, bvh: &SnoozyRef<GpuBvh>) -> Result<ShaderUniformBundle> {
     let bvh = ctx.get(bvh)?;
 
-    let nodes = ArcView::new(&bvh, |n| { &n.nodes });
-    let triangles = ArcView::new(&bvh, |n| { &n.triangles });
+    let nodes = ArcView::new(&bvh, |n| &n.nodes);
+    let triangles = ArcView::new(&bvh, |n| &n.triangles);
 
     Ok(shader_uniforms!(
         "bvh_meta_buf": upload_array_buffer(Box::new(vec![(nodes.len() / 6) as u32])),
