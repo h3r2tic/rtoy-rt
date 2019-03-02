@@ -5,10 +5,8 @@ authors = ["Tomasz Stachowiak <h3@h3.gd>"]
 edition = "2018"
 
 [dependencies]
-rendertoy = { git = "https://github.com/h3r2tic/rendertoy", rev = "f5b269e" }
-#rendertoy = { path = "../rendertoy" }
-snoozy = { git = "https://github.com/h3r2tic/snoozy" }
-#snoozy = { path = "../snoozy" }
+#rendertoy = { git = "https://github.com/h3r2tic/rendertoy" }
+rendertoy = { path = "../rendertoy" }
 snoozy-macros = { git = "https://github.com/h3r2tic/snoozy-macros" }
 #snoozy-macros = { path = "../snoozy-macros" }
 bvh = { git = "https://github.com/h3r2tic/bvh", branch = "immutable-build" }
