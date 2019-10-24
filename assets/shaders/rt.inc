@@ -44,7 +44,8 @@ BvhNode unpack_bvh_node(PackedBvhNode node) {
 }
 
 struct PackedTriangle {
-    float data[9];
+    float v[3];
+    uint e[3];
 };
 
 struct Triangle {
@@ -55,9 +56,12 @@ struct Triangle {
 
 Triangle unpack_triangle(PackedTriangle tri) {
     Triangle res;
-    res.v = vec3(tri.data[0], tri.data[1], tri.data[2]);
-    res.e0 = vec3(tri.data[3], tri.data[4], tri.data[5]);
-    res.e1 = vec3(tri.data[6], tri.data[7], tri.data[8]);
+    res.v = vec3(tri.v[0], tri.v[1], tri.v[2]);
+    vec2 ex = unpackHalf2x16(tri.e[0]);
+    vec2 ey = unpackHalf2x16(tri.e[1]);
+    vec2 ez = unpackHalf2x16(tri.e[2]);    
+    res.e0 = vec3(ex.y, ey.y, ez.y);
+    res.e1 = vec3(ex.x, ey.x, ez.x);
     return res;
 }
 

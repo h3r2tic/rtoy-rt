@@ -156,11 +156,10 @@ impl BvhNode {
 #[repr(C)]
 pub struct GpuTriangle {
     v: (f32, f32, f32),
-    e0: (f32, f32, f32),
-    e1: (f32, f32, f32),
+    e0_e1: (u32, u32, u32),
 }
 
-assert_eq_size!(triangle_size_check; GpuTriangle, [u8; 9 * 4]);
+assert_eq_size!(triangle_size_check; GpuTriangle, [u8; 6 * 4]);
 
 fn convert_bvh<BoxOrderFn>(
     node: usize,
@@ -299,8 +298,14 @@ pub fn build_gpu_bvh(ctx: &mut Context, mesh: &SnoozyRef<TriangleMesh>) -> Resul
             let e1 = v2 - v0;
             GpuTriangle {
                 v: (v0.x, v0.y, v0.z),
-                e0: (e0.x, e0.y, e0.z),
-                e1: (e1.x, e1.y, e1.z),
+                e0_e1: (
+                    ((half::f16::from_f32(e0.x).to_bits() as u32) << 16)
+                        | (half::f16::from_f32(e1.x).to_bits() as u32),
+                    ((half::f16::from_f32(e0.y).to_bits() as u32) << 16)
+                        | (half::f16::from_f32(e1.y).to_bits() as u32),
+                    ((half::f16::from_f32(e0.z).to_bits() as u32) << 16)
+                        | (half::f16::from_f32(e1.z).to_bits() as u32),
+                ),
             }
         })
         .collect::<Vec<_>>();
