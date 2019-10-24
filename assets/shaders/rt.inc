@@ -65,16 +65,23 @@ Triangle unpack_triangle(PackedTriangle tri) {
     return res;
 }
 
-layout(std430) buffer rt_tla_buf {
+struct BlBvhHeader {
     uvec2 meta_buf_sampler;
     uvec2 tri_buf_sampler;
     uvec2 bvh_buf_sampler;
+    float offset_x;
+    float offset_y;
+    float offset_z;
+};
+
+layout(std430) buffer rt_tla_buf {
+    BlBvhHeader bl_headers[];
 };
 
 uniform usamplerBuffer bvh_meta_buf;
 
-uint get_bvh_node_count() {
-    return texelFetch(usamplerBuffer(meta_buf_sampler), 0).x;
+uint get_bvh_node_count(BlBvhHeader header) {
+    return texelFetch(usamplerBuffer(header.meta_buf_sampler), 0).x;
 }
 
 PackedBvhNode get_bvh_node(usamplerBuffer bvh_sampler, uint idx) {
@@ -180,9 +187,14 @@ struct RtHit {
     usamplerBuffer tri_sampler;
 };
 
-bool raytrace(Ray r, inout RtHit hit) {
-    usamplerBuffer bvh_sampler = usamplerBuffer(bvh_buf_sampler);
-    usamplerBuffer tri_sampler = usamplerBuffer(tri_buf_sampler);
+bool raytrace_bl(Ray r, uint bl_idx, inout RtHit hit) {
+    BlBvhHeader bl_header = bl_headers[bl_idx];
+    usamplerBuffer bvh_sampler = usamplerBuffer(bl_header.bvh_buf_sampler);
+    usamplerBuffer tri_sampler = usamplerBuffer(bl_header.tri_buf_sampler);
+
+    r.o.x -= bl_header.offset_x;
+    r.o.y -= bl_header.offset_y;
+    r.o.z -= bl_header.offset_z;
 
     uint node_idx = 0;
     {
@@ -195,12 +207,12 @@ bool raytrace(Ray r, inout RtHit hit) {
         } else if (absdir.z == maxcomp) {
             node_idx = r.d.z > 0.0 ? 4 : 5;
         }
-        node_idx *= get_bvh_node_count();
+        node_idx *= get_bvh_node_count(bl_header);
     }
 
-    uint end_idx = node_idx + get_bvh_node_count();
+    uint end_idx = node_idx + get_bvh_node_count(bl_header);
     
-    float tmin = 1.0e10;
+    float tmin = hit.t;
     vec3 barycentric;
     uint hit_tri = INVALID_TRIANGLE_INDEX;
 
@@ -237,9 +249,21 @@ bool raytrace(Ray r, inout RtHit hit) {
     return false;
 }
 
-bool raytrace_intersects_any(Ray r, float tmax) {
-    usamplerBuffer bvh_sampler = usamplerBuffer(bvh_buf_sampler);
-    usamplerBuffer tri_sampler = usamplerBuffer(tri_buf_sampler);
+bool raytrace(Ray r, inout RtHit hit) {
+    int result = 0;
+    result = result | int(raytrace_bl(r, 0, hit));
+    result = result | int(raytrace_bl(r, 1, hit));
+    return bool(result);
+}
+
+bool raytrace_intersects_any_bl(Ray r, uint bl_idx, float tmax) {
+    BlBvhHeader bl_header = bl_headers[bl_idx];
+    usamplerBuffer bvh_sampler = usamplerBuffer(bl_header.bvh_buf_sampler);
+    usamplerBuffer tri_sampler = usamplerBuffer(bl_header.tri_buf_sampler);
+
+    r.o.x -= bl_header.offset_x;
+    r.o.y -= bl_header.offset_y;
+    r.o.z -= bl_header.offset_z;
 
     uint node_idx = 0;
     {
@@ -252,10 +276,10 @@ bool raytrace_intersects_any(Ray r, float tmax) {
         } else if (absdir.z == maxcomp) {
             node_idx = r.d.z > 0.0 ? 4 : 5;
         }
-        node_idx *= get_bvh_node_count();
+        node_idx *= get_bvh_node_count(bl_header);
     }
 
-    uint end_idx = node_idx + get_bvh_node_count();
+    uint end_idx = node_idx + get_bvh_node_count(bl_header);
     
     uint iter = 0;
     for (; iter < 1024 && node_idx < end_idx; ++iter) {
@@ -279,6 +303,13 @@ bool raytrace_intersects_any(Ray r, float tmax) {
     }
 
     return false;
+}
+
+bool raytrace_intersects_any(Ray r, float tmax) {
+    bool result = false;
+    result = result || raytrace_intersects_any_bl(r, 0, tmax);
+    result = result || raytrace_intersects_any_bl(r, 1, tmax);
+    return result;
 }
 
 bool raytrace_intersects_any(Ray r) {

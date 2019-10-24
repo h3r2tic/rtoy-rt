@@ -11,6 +11,7 @@ use bvh::{
     aabb::AABB,
     bvh::{BVHNode, BVH},
 };
+use std::hash::{Hash, Hasher};
 
 #[derive(Clone, Copy, Abomonation)]
 #[repr(C)]
@@ -318,26 +319,78 @@ pub fn build_gpu_bvh(ctx: &mut Context, mesh: &SnoozyRef<TriangleMesh>) -> Resul
     })
 }
 
+struct BlBvh {
+    meta_buf: SnoozyRef<Buffer>,
+    tri_buf: SnoozyRef<Buffer>,
+    bvh_buf: SnoozyRef<Buffer>,
+}
+
 #[snoozy]
-pub fn upload_bvh(ctx: &mut Context, bvh: &SnoozyRef<GpuBvh>) -> Result<ShaderUniformBundle> {
+fn upload_bl_bvh(ctx: &mut Context, bvh: &SnoozyRef<GpuBvh>) -> Result<BlBvh> {
     let bvh = ctx.get(bvh)?;
 
     let nodes = ArcView::new(&bvh, |n| &n.nodes);
     let triangles = ArcView::new(&bvh, |n| &n.triangles);
 
-    let meta_buf = ctx.get(upload_array_tex_buffer(
-        Box::new(vec![(nodes.len() / 6) as u32]),
-        gl::R32UI,
-    ))?;
+    let meta_buf = upload_array_tex_buffer(Box::new(vec![(nodes.len() / 6) as u32]), gl::R32UI);
 
-    let tri_buf = ctx.get(upload_array_tex_buffer(triangles, gl::RG32UI))?;
-    let bvh_buf = ctx.get(upload_array_tex_buffer(nodes, gl::RGBA32UI))?;
+    let tri_buf = upload_array_tex_buffer(triangles, gl::RG32UI);
+    let bvh_buf = upload_array_tex_buffer(nodes, gl::RGBA32UI);
 
-    let tla_data: Vec<u64> = vec![
-        meta_buf.bindless_texture_handle.unwrap(),
-        tri_buf.bindless_texture_handle.unwrap(),
-        bvh_buf.bindless_texture_handle.unwrap(),
-    ];
+    Ok(BlBvh {
+        meta_buf,
+        tri_buf,
+        bvh_buf,
+    })
+}
+
+#[allow(dead_code)]
+struct GpuBlBvhHeader {
+    // Resident texture handles
+    meta_buf: u64,
+    tri_buf: u64,
+    bvh_buf: u64,
+    offset_x: f32,
+    offset_y: f32,
+    offset_z: f32,
+}
+
+impl Hash for GpuBlBvhHeader {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.meta_buf.hash(state);
+        self.tri_buf.hash(state);
+        self.bvh_buf.hash(state);
+        self.offset_x.to_bits().hash(state);
+        self.offset_y.to_bits().hash(state);
+        self.offset_z.to_bits().hash(state);
+    }
+}
+
+#[snoozy]
+pub fn upload_bvh(
+    ctx: &mut Context,
+    scene: &Vec<(SnoozyRef<TriangleMesh>, Vector3)>,
+) -> Result<ShaderUniformBundle> {
+    let tla_data: Vec<GpuBlBvhHeader> = scene
+        .iter()
+        .cloned()
+        .map(|(mesh, offset): (SnoozyRef<TriangleMesh>, Vector3)| {
+            let mesh = ctx.get(upload_bl_bvh(build_gpu_bvh(mesh)))?;
+
+            let meta_buf = ctx.get(&mesh.meta_buf)?;
+            let tri_buf = ctx.get(&mesh.tri_buf)?;
+            let bvh_buf = ctx.get(&mesh.bvh_buf)?;
+
+            Ok(GpuBlBvhHeader {
+                meta_buf: meta_buf.bindless_texture_handle.unwrap(),
+                tri_buf: tri_buf.bindless_texture_handle.unwrap(),
+                bvh_buf: bvh_buf.bindless_texture_handle.unwrap(),
+                offset_x: offset.x,
+                offset_y: offset.y,
+                offset_z: offset.z,
+            })
+        })
+        .collect::<Result<Vec<_>>>()?;
 
     Ok(shader_uniforms!(
         "rt_tla_buf": upload_array_buffer(Box::new(tla_data)),
