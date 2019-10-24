@@ -325,24 +325,21 @@ pub fn upload_bvh(ctx: &mut Context, bvh: &SnoozyRef<GpuBvh>) -> Result<ShaderUn
     let nodes = ArcView::new(&bvh, |n| &n.nodes);
     let triangles = ArcView::new(&bvh, |n| &n.triangles);
 
-    let meta_buf = upload_array_tex_buffer(Box::new(vec![(nodes.len() / 6) as u32]), gl::R32UI);
-    let meta_buf_data = ctx.get(meta_buf)?;
+    let meta_buf = ctx.get(upload_array_tex_buffer(
+        Box::new(vec![(nodes.len() / 6) as u32]),
+        gl::R32UI,
+    ))?;
 
-    let tri_buf = upload_array_tex_buffer(triangles, gl::RG32UI);
-    let tri_buf_data = ctx.get(tri_buf)?;
-
-    let bvh_buf = upload_array_tex_buffer(nodes, gl::RGBA32UI);
-    let bvh_buf_data = ctx.get(bvh_buf)?;
+    let tri_buf = ctx.get(upload_array_tex_buffer(triangles, gl::RG32UI))?;
+    let bvh_buf = ctx.get(upload_array_tex_buffer(nodes, gl::RGBA32UI))?;
 
     let tla_data: Vec<u64> = vec![
-        meta_buf_data.bindless_texture_handle.unwrap(),
-        tri_buf_data.bindless_texture_handle.unwrap(),
-        bvh_buf_data.bindless_texture_handle.unwrap(),
+        meta_buf.bindless_texture_handle.unwrap(),
+        tri_buf.bindless_texture_handle.unwrap(),
+        bvh_buf.bindless_texture_handle.unwrap(),
     ];
 
     Ok(shader_uniforms!(
         "rt_tla_buf": upload_array_buffer(Box::new(tla_data)),
-        "bvh_nodes_buf": bvh_buf,
-        "bvh_triangles_buf": tri_buf,
     ))
 }

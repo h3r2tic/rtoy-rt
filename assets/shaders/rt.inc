@@ -75,16 +75,7 @@ uniform usamplerBuffer bvh_meta_buf;
 
 uint get_bvh_node_count() {
     return texelFetch(usamplerBuffer(meta_buf_sampler), 0).x;
-    //return texelFetch(bvh_meta_buf, 0).x;
 }
-
-layout(std430) buffer bvh_nodes_buf {
-    PackedBvhNode bvh_nodes[];
-};
-
-layout(std430) buffer bvh_triangles_buf {
-    PackedTriangle bvh_triangles[];
-};
 
 PackedBvhNode get_bvh_node(usamplerBuffer bvh_sampler, uint idx) {
     PackedBvhNode res;
@@ -186,6 +177,7 @@ struct RtHit {
     vec3 barycentric;
     uint tri_idx;
     uint debug_iter_count;
+    usamplerBuffer tri_sampler;
 };
 
 bool raytrace(Ray r, inout RtHit hit) {
@@ -238,6 +230,7 @@ bool raytrace(Ray r, inout RtHit hit) {
         hit.t = tmin;
         hit.barycentric = barycentric;
         hit.tri_idx = hit_tri;
+        hit.tri_sampler = tri_sampler;
         return true;
     }
 
