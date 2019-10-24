@@ -107,6 +107,26 @@ PackedTriangle get_bvh_triangle(usamplerBuffer tri_sampler, uint idx) {
     return res;
 }
 
+/*
+// RGBA32UI version; a bit slower in practice
+
+PackedTriangle get_bvh_triangle(usamplerBuffer tri_sampler, uint idx) {
+    PackedTriangle res;
+    idx *= 3;
+    int loc = int(idx >> 1u);
+    uvec4 d0 = texelFetch(tri_sampler, loc+0);
+    uvec4 d1 = texelFetch(tri_sampler, loc+1);
+    uint c = idx & 1;
+    res.v[0] = uintBitsToFloat(0 == c ? d0.x : d0.z);
+    res.v[1] = uintBitsToFloat(0 == c ? d0.y : d0.w);
+    res.v[2] = uintBitsToFloat(0 == c ? d0.z : d1.x);
+    res.e[0] = 0 == c ? d0.w : d1.y;
+    res.e[1] = 0 == c ? d1.x : d1.z;
+    res.e[2] = 0 == c ? d1.y : d1.w;
+    return res;
+}
+*/
+
 struct Ray {
 	vec3 o;
 	vec3 d;
