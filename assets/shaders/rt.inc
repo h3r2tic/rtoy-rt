@@ -2,7 +2,7 @@
 #define INVALID_TRIANGLE_INDEX 0xffffff
 
 struct PackedBvhNode {
-    uint data[4];
+    uvec4 data;
 };
 
 struct BvhNode {
@@ -67,6 +67,8 @@ Triangle unpack_triangle(PackedTriangle tri) {
 
 layout(std430) buffer rt_tla_buf {
     uvec2 meta_buf_sampler;
+    uvec2 tri_buf_sampler;
+    uvec2 bvh_buf_sampler;
 };
 
 uniform usamplerBuffer bvh_meta_buf;
@@ -76,8 +78,6 @@ uint get_bvh_node_count() {
     //return texelFetch(bvh_meta_buf, 0).x;
 }
 
-layout(std430)
-
 layout(std430) buffer bvh_nodes_buf {
     PackedBvhNode bvh_nodes[];
 };
@@ -85,6 +85,27 @@ layout(std430) buffer bvh_nodes_buf {
 layout(std430) buffer bvh_triangles_buf {
     PackedTriangle bvh_triangles[];
 };
+
+PackedBvhNode get_bvh_node(usamplerBuffer bvh_sampler, uint idx) {
+    PackedBvhNode res;
+    res.data = texelFetch(bvh_sampler, int(idx));
+    return res;
+}
+
+PackedTriangle get_bvh_triangle(usamplerBuffer tri_sampler, uint idx) {
+    PackedTriangle res;
+    int loc = int(idx * 3);
+    uvec2 d0 = texelFetch(tri_sampler, loc+0).xy;
+    uvec2 d1 = texelFetch(tri_sampler, loc+1).xy;
+    uvec2 d2 = texelFetch(tri_sampler, loc+2).xy;
+    res.v[0] = uintBitsToFloat(d0.x);
+    res.v[1] = uintBitsToFloat(d0.y);
+    res.v[2] = uintBitsToFloat(d1.x);
+    res.e[0] = d1.y;
+    res.e[1] = d2.x;
+    res.e[2] = d2.y;
+    return res;
+}
 
 struct Ray {
 	vec3 o;
@@ -148,6 +169,9 @@ struct RtHit {
 };
 
 bool raytrace(Ray r, inout RtHit hit) {
+    usamplerBuffer bvh_sampler = usamplerBuffer(bvh_buf_sampler);
+    usamplerBuffer tri_sampler = usamplerBuffer(tri_buf_sampler);
+
     uint node_idx = 0;
     {
         vec3 absdir = abs(r.d);
@@ -170,13 +194,13 @@ bool raytrace(Ray r, inout RtHit hit) {
 
     uint iter = 0;
     for (; iter < 1024 && node_idx < end_idx; ++iter) {
-        BvhNode node = unpack_bvh_node(bvh_nodes[node_idx]);
+        BvhNode node = unpack_bvh_node(get_bvh_node(bvh_sampler, node_idx));
         bool intersects_box = intersect_ray_aabb(r, node.box_min, node.box_max, tmin);
 
         bool is_leaf = node.prim_idx != INVALID_TRIANGLE_INDEX;
 
         if (intersects_box && is_leaf) {
-            if (intersect_ray_tri(r, unpack_triangle(bvh_triangles[node.prim_idx]), tmin, barycentric)) {
+            if (intersect_ray_tri(r, unpack_triangle(get_bvh_triangle(tri_sampler, node.prim_idx)), tmin, barycentric)) {
                 hit_tri = node.prim_idx;
             }
         }
@@ -201,6 +225,9 @@ bool raytrace(Ray r, inout RtHit hit) {
 }
 
 bool raytrace_intersects_any(Ray r, float tmax) {
+    usamplerBuffer bvh_sampler = usamplerBuffer(bvh_buf_sampler);
+    usamplerBuffer tri_sampler = usamplerBuffer(tri_buf_sampler);
+
     uint node_idx = 0;
     {
         vec3 absdir = abs(r.d);
@@ -219,14 +246,14 @@ bool raytrace_intersects_any(Ray r, float tmax) {
     
     uint iter = 0;
     for (; iter < 1024 && node_idx < end_idx; ++iter) {
-        BvhNode node = unpack_bvh_node(bvh_nodes[node_idx]);
+        BvhNode node = unpack_bvh_node(get_bvh_node(bvh_sampler, node_idx));
         bool intersects_box = intersect_ray_aabb(r, node.box_min, node.box_max, tmax);
 
         bool is_leaf = node.prim_idx != INVALID_TRIANGLE_INDEX;
 
         if (intersects_box && is_leaf) {
             vec3 barycentric;
-            if (intersect_ray_tri(r, unpack_triangle(bvh_triangles[node.prim_idx]), tmax, barycentric)) {
+            if (intersect_ray_tri(r, unpack_triangle(get_bvh_triangle(tri_sampler, node.prim_idx)), tmax, barycentric)) {
                 return true;
             }
         }
