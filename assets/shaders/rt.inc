@@ -1,3 +1,4 @@
+#extension GL_ARB_bindless_texture: enable
 #define INVALID_TRIANGLE_INDEX 0xffffff
 
 struct PackedBvhNode {
@@ -60,9 +61,18 @@ Triangle unpack_triangle(PackedTriangle tri) {
     return res;
 }
 
-layout(std430) buffer bvh_meta_buf {
-    uint bvh_node_count;
+layout(std430) buffer rt_tla_buf {
+    uvec2 meta_buf_sampler;
 };
+
+uniform usamplerBuffer bvh_meta_buf;
+
+uint get_bvh_node_count() {
+    return texelFetch(usamplerBuffer(meta_buf_sampler), 0).x;
+    //return texelFetch(bvh_meta_buf, 0).x;
+}
+
+layout(std430)
 
 layout(std430) buffer bvh_nodes_buf {
     PackedBvhNode bvh_nodes[];
@@ -145,10 +155,10 @@ bool raytrace(Ray r, inout RtHit hit) {
         } else if (absdir.z == maxcomp) {
             node_idx = r.d.z > 0.0 ? 4 : 5;
         }
-        node_idx *= bvh_node_count;
+        node_idx *= get_bvh_node_count();
     }
 
-    uint end_idx = node_idx + bvh_node_count;
+    uint end_idx = node_idx + get_bvh_node_count();
     
     float tmin = 1.0e10;
     vec3 barycentric;
@@ -198,10 +208,10 @@ bool raytrace_intersects_any(Ray r, float tmax) {
         } else if (absdir.z == maxcomp) {
             node_idx = r.d.z > 0.0 ? 4 : 5;
         }
-        node_idx *= bvh_node_count;
+        node_idx *= get_bvh_node_count();
     }
 
-    uint end_idx = node_idx + bvh_node_count;
+    uint end_idx = node_idx + get_bvh_node_count();
     
     uint iter = 0;
     for (; iter < 1024 && node_idx < end_idx; ++iter) {

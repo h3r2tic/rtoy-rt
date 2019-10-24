@@ -320,8 +320,11 @@ pub fn upload_bvh(ctx: &mut Context, bvh: &SnoozyRef<GpuBvh>) -> Result<ShaderUn
     let nodes = ArcView::new(&bvh, |n| &n.nodes);
     let triangles = ArcView::new(&bvh, |n| &n.triangles);
 
+    let meta_buf = upload_array_buffer(Box::new(vec![(nodes.len() / 6) as u32]));
+    let meta_buf_data = ctx.get(meta_buf)?;
+
     Ok(shader_uniforms!(
-        "bvh_meta_buf": upload_array_buffer(Box::new(vec![(nodes.len() / 6) as u32])),
+        "rt_tla_buf": upload_array_buffer(Box::new(vec![meta_buf_data.bindless_texture_handle])),
         "bvh_nodes_buf": upload_array_buffer(nodes),
         "bvh_triangles_buf": upload_array_buffer(triangles),
     ))
