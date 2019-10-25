@@ -11,7 +11,7 @@ rendertoy = { path = "../rendertoy" }
 snoozy-macros = { path = "../snoozy-macros" }
 #bvh = { git = "https://github.com/h3r2tic/bvh", branch = "immutable-build" }
 bvh = { path = "../bvh" }
-static_assertions = "0.3.1"
-half = "1.3.0"
+static_assertions = "1.0"
+half = "1.4"
 abomonation = "0.7"
-abomonation_derive = "0.3"
+abomonation_derive = "0.5"

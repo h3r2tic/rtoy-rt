@@ -160,7 +160,7 @@ pub struct GpuTriangle {
     e0_e1: (u32, u32, u32),
 }
 
-assert_eq_size!(triangle_size_check; GpuTriangle, [u8; 6 * 4]);
+assert_eq_size!(GpuTriangle, [u8; 6 * 4]);
 
 fn convert_bvh<BoxOrderFn>(
     node: usize,
@@ -369,12 +369,12 @@ impl Hash for GpuBlBvhHeader {
 #[snoozy]
 pub fn upload_bvh(
     ctx: &mut Context,
-    scene: &Vec<(SnoozyRef<TriangleMesh>, Vector3)>,
+    scene: &Vec<(SnoozyRef<TriangleMesh>, Vector3, Quaternion)>,
 ) -> Result<ShaderUniformBundle> {
     let tla_data: Vec<GpuBlBvhHeader> = scene
         .iter()
         .cloned()
-        .map(|(mesh, offset): (SnoozyRef<TriangleMesh>, Vector3)| {
+        .map(|(mesh, offset, _rotation)| {
             let mesh = ctx.get(upload_bl_bvh(build_gpu_bvh(mesh)))?;
 
             let meta_buf = ctx.get(&mesh.meta_buf)?;
