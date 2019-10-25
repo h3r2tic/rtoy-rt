@@ -392,7 +392,10 @@ pub fn upload_bvh(
         })
         .collect::<Result<Vec<_>>>()?;
 
+    let bl_count = tla_data.len() as u32;
+
     Ok(shader_uniforms!(
         "rt_tla_buf": upload_array_buffer(Box::new(tla_data)),
+        "rt_tla_meta_buf": upload_buffer(bl_count),
     ))
 }

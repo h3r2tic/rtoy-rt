@@ -74,6 +74,10 @@ struct BlBvhHeader {
     float offset_z;
 };
 
+layout(std430) buffer rt_tla_meta_buf {
+    uint bl_count;
+};
+
 layout(std430) buffer rt_tla_buf {
     BlBvhHeader bl_headers[];
 };
@@ -251,8 +255,9 @@ bool raytrace_bl(Ray r, uint bl_idx, inout RtHit hit) {
 
 bool raytrace(Ray r, inout RtHit hit) {
     int result = 0;
-    result = result | int(raytrace_bl(r, 0, hit));
-    result = result | int(raytrace_bl(r, 1, hit));
+    for (uint i = 0; i < bl_count; ++i) {
+        result = result | int(raytrace_bl(r, i, hit));
+    }
     return bool(result);
 }
 
@@ -307,8 +312,9 @@ bool raytrace_intersects_any_bl(Ray r, uint bl_idx, float tmax) {
 
 bool raytrace_intersects_any(Ray r, float tmax) {
     bool result = false;
-    result = result || raytrace_intersects_any_bl(r, 0, tmax);
-    result = result || raytrace_intersects_any_bl(r, 1, tmax);
+    for (uint i = 0; i < bl_count && !result; ++i) {
+        result = result || raytrace_intersects_any_bl(r, i, tmax);
+    }
     return result;
 }
 
