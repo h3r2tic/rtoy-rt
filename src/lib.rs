@@ -345,14 +345,14 @@ fn upload_bl_bvh(ctx: &mut Context, bvh: &SnoozyRef<GpuBvh>) -> Result<BlBvh> {
 }
 
 #[allow(dead_code)]
+#[repr(C)]
 struct GpuBlBvhHeader {
     // Resident texture handles
     meta_buf: u64,
     tri_buf: u64,
     bvh_buf: u64,
-    offset_x: f32,
-    offset_y: f32,
-    offset_z: f32,
+    offset: [f32; 3],
+    rotation: [f32; 4],
 }
 
 impl Hash for GpuBlBvhHeader {
@@ -360,21 +360,24 @@ impl Hash for GpuBlBvhHeader {
         self.meta_buf.hash(state);
         self.tri_buf.hash(state);
         self.bvh_buf.hash(state);
-        self.offset_x.to_bits().hash(state);
-        self.offset_y.to_bits().hash(state);
-        self.offset_z.to_bits().hash(state);
+        for v in &self.offset {
+            v.to_bits().hash(state);
+        }
+        for v in &self.rotation {
+            v.to_bits().hash(state);
+        }
     }
 }
 
 #[snoozy]
 pub fn upload_bvh(
     ctx: &mut Context,
-    scene: &Vec<(SnoozyRef<TriangleMesh>, Vector3, Quaternion)>,
+    scene: &Vec<(SnoozyRef<TriangleMesh>, Vector3, UnitQuaternion)>,
 ) -> Result<ShaderUniformBundle> {
     let tla_data: Vec<GpuBlBvhHeader> = scene
         .iter()
         .cloned()
-        .map(|(mesh, offset, _rotation)| {
+        .map(|(mesh, offset, rotation)| {
             let mesh = ctx.get(upload_bl_bvh(build_gpu_bvh(mesh)))?;
 
             let meta_buf = ctx.get(&mesh.meta_buf)?;
@@ -385,9 +388,8 @@ pub fn upload_bvh(
                 meta_buf: meta_buf.bindless_texture_handle.unwrap(),
                 tri_buf: tri_buf.bindless_texture_handle.unwrap(),
                 bvh_buf: bvh_buf.bindless_texture_handle.unwrap(),
-                offset_x: offset.x,
-                offset_y: offset.y,
-                offset_z: offset.z,
+                offset: offset.into(),
+                rotation: rotation.quaternion().as_vector().clone().into(),
             })
         })
         .collect::<Result<Vec<_>>>()?;

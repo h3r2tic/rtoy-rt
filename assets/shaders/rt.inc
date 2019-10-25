@@ -69,9 +69,8 @@ struct BlBvhHeader {
     uvec2 meta_buf_sampler;
     uvec2 tri_buf_sampler;
     uvec2 bvh_buf_sampler;
-    float offset_x;
-    float offset_y;
-    float offset_z;
+    float offset[3];
+    float rotation[4];
 };
 
 layout(std430) buffer rt_tla_meta_buf {
@@ -186,19 +185,30 @@ bool intersect_ray_aabb(Ray r, vec3 pmin, vec3 pmax, float t)
 struct RtHit {
     float t;
     vec3 barycentric;
+    vec3 normal;
     uint tri_idx;
     uint debug_iter_count;
     usamplerBuffer tri_sampler;
 };
+
+vec4 quat_conj(vec4 q) {
+    return vec4(-q.x, -q.y, -q.z, q.w); 
+}
+
+vec3 qtransform(vec4 q, vec3 v) {
+    return v + 2.0 * cross(q.xyz, cross(q.xyz, v) + q.w * v);
+} 
 
 bool raytrace_bl(Ray r, uint bl_idx, inout RtHit hit) {
     BlBvhHeader bl_header = bl_headers[bl_idx];
     usamplerBuffer bvh_sampler = usamplerBuffer(bl_header.bvh_buf_sampler);
     usamplerBuffer tri_sampler = usamplerBuffer(bl_header.tri_buf_sampler);
 
-    r.o.x -= bl_header.offset_x;
-    r.o.y -= bl_header.offset_y;
-    r.o.z -= bl_header.offset_z;
+    vec4 rotation = vec4(bl_header.rotation[0], bl_header.rotation[1], bl_header.rotation[2], bl_header.rotation[3]);
+    vec4 inv_rotation = quat_conj(rotation);
+    r.o -= vec3(bl_header.offset[0], bl_header.offset[1], bl_header.offset[2]);
+    r.o = qtransform(inv_rotation, r.o);
+    r.d = qtransform(inv_rotation, r.d);
 
     uint node_idx = 0;
     {
@@ -219,6 +229,7 @@ bool raytrace_bl(Ray r, uint bl_idx, inout RtHit hit) {
     float tmin = hit.t;
     vec3 barycentric;
     uint hit_tri = INVALID_TRIANGLE_INDEX;
+    vec3 hit_normal;
 
     uint iter = 0;
     for (; iter < 1024 && node_idx < end_idx; ++iter) {
@@ -228,8 +239,10 @@ bool raytrace_bl(Ray r, uint bl_idx, inout RtHit hit) {
         bool is_leaf = node.prim_idx != INVALID_TRIANGLE_INDEX;
 
         if (intersects_box && is_leaf) {
-            if (intersect_ray_tri(r, unpack_triangle(get_bvh_triangle(tri_sampler, node.prim_idx)), tmin, barycentric)) {
+            Triangle tri = unpack_triangle(get_bvh_triangle(tri_sampler, node.prim_idx));
+            if (intersect_ray_tri(r, tri, tmin, barycentric)) {
                 hit_tri = node.prim_idx;
+                hit_normal = cross(tri.e0, tri.e1);
             }
         }
 
@@ -247,6 +260,7 @@ bool raytrace_bl(Ray r, uint bl_idx, inout RtHit hit) {
         hit.barycentric = barycentric;
         hit.tri_idx = hit_tri;
         hit.tri_sampler = tri_sampler;
+        hit.normal = normalize(qtransform(rotation, hit_normal));
         return true;
     }
 
@@ -266,9 +280,11 @@ bool raytrace_intersects_any_bl(Ray r, uint bl_idx, float tmax) {
     usamplerBuffer bvh_sampler = usamplerBuffer(bl_header.bvh_buf_sampler);
     usamplerBuffer tri_sampler = usamplerBuffer(bl_header.tri_buf_sampler);
 
-    r.o.x -= bl_header.offset_x;
-    r.o.y -= bl_header.offset_y;
-    r.o.z -= bl_header.offset_z;
+    vec4 rotation = vec4(bl_header.rotation[0], bl_header.rotation[1], bl_header.rotation[2], bl_header.rotation[3]);
+    vec4 inv_rotation = quat_conj(rotation);
+    r.o -= vec3(bl_header.offset[0], bl_header.offset[1], bl_header.offset[2]);
+    r.o = qtransform(inv_rotation, r.o);
+    r.d = qtransform(inv_rotation, r.d);
 
     uint node_idx = 0;
     {
