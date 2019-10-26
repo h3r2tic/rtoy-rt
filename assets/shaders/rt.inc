@@ -1,11 +1,11 @@
 #extension GL_ARB_bindless_texture: enable
 #define INVALID_TRIANGLE_INDEX 0xffffff
 
-struct PackedBvhNode {
+struct PackedBlBvhNode {
     uvec4 data;
 };
 
-struct BvhNode {
+struct BlBvhNode {
     vec3 box_min;
     uint exit_idx;
     vec3 box_max;
@@ -31,10 +31,10 @@ vec3 rgb9e5_to_float3(uint v) {
     return vec3(r * scale, g * scale, b * scale);
 }
 
-BvhNode unpack_bvh_node(PackedBvhNode node) {
+BlBvhNode unpack_bl_bvh_node(PackedBlBvhNode node) {
     vec3 box_extent = rgb9e5_to_float3(node.data[0]);
 
-    BvhNode res;
+    BlBvhNode res;
     res.box_min.xy = unpackHalf2x16(node.data[1]).yx;
     res.box_min.z = unpackHalf2x16(node.data[2]).y;
     res.box_max = res.box_min + box_extent;
@@ -81,14 +81,23 @@ layout(std430) buffer rt_tla_buf {
     BlBvhHeader bl_headers[];
 };
 
+struct RootBox {
+    float pmin[3];
+    float pmax[3];
+};
+
+layout(std430) buffer rt_tla_root_boxes {
+    RootBox bl_root_boxes[];
+};
+
 uniform usamplerBuffer bvh_meta_buf;
 
 uint get_bvh_node_count(BlBvhHeader header) {
     return texelFetch(usamplerBuffer(header.meta_buf_sampler), 0).x;
 }
 
-PackedBvhNode get_bvh_node(usamplerBuffer bvh_sampler, uint idx) {
-    PackedBvhNode res;
+PackedBlBvhNode get_bl_bvh_node(usamplerBuffer bvh_sampler, uint idx) {
+    PackedBlBvhNode res;
     res.data = texelFetch(bvh_sampler, int(idx));
     return res;
 }
@@ -233,7 +242,7 @@ bool raytrace_bl(Ray r, uint bl_idx, inout RtHit hit) {
 
     uint iter = 0;
     for (; iter < 1024 && node_idx < end_idx; ++iter) {
-        BvhNode node = unpack_bvh_node(get_bvh_node(bvh_sampler, node_idx));
+        BlBvhNode node = unpack_bl_bvh_node(get_bl_bvh_node(bvh_sampler, node_idx));
         bool intersects_box = intersect_ray_aabb(r, node.box_min, node.box_max, tmin);
 
         bool is_leaf = node.prim_idx != INVALID_TRIANGLE_INDEX;
@@ -267,14 +276,6 @@ bool raytrace_bl(Ray r, uint bl_idx, inout RtHit hit) {
     return false;
 }
 
-bool raytrace(Ray r, inout RtHit hit) {
-    int result = 0;
-    for (uint i = 0; i < bl_count; ++i) {
-        result = result | int(raytrace_bl(r, i, hit));
-    }
-    return bool(result);
-}
-
 bool raytrace_intersects_any_bl(Ray r, uint bl_idx, float tmax) {
     BlBvhHeader bl_header = bl_headers[bl_idx];
     usamplerBuffer bvh_sampler = usamplerBuffer(bl_header.bvh_buf_sampler);
@@ -304,9 +305,8 @@ bool raytrace_intersects_any_bl(Ray r, uint bl_idx, float tmax) {
     
     uint iter = 0;
     for (; iter < 1024 && node_idx < end_idx; ++iter) {
-        BvhNode node = unpack_bvh_node(get_bvh_node(bvh_sampler, node_idx));
+        BlBvhNode node = unpack_bl_bvh_node(get_bl_bvh_node(bvh_sampler, node_idx));
         bool intersects_box = intersect_ray_aabb(r, node.box_min, node.box_max, tmax);
-
         bool is_leaf = node.prim_idx != INVALID_TRIANGLE_INDEX;
 
         if (intersects_box && is_leaf) {
@@ -326,12 +326,176 @@ bool raytrace_intersects_any_bl(Ray r, uint bl_idx, float tmax) {
     return false;
 }
 
-bool raytrace_intersects_any(Ray r, float tmax) {
-    bool result = false;
-    for (uint i = 0; i < bl_count && !result; ++i) {
-        result = result || raytrace_intersects_any_bl(r, i, tmax);
+uniform usamplerBuffer rt_tla_nodes;
+uniform usamplerBuffer rt_tla_nodes_b;
+
+struct PackedTlBvhNode {
+    uvec2 data[3];
+};
+
+PackedTlBvhNode get_tl_bvh_node(uint idx) {
+    PackedTlBvhNode res;
+    res.data[0] = texelFetch(rt_tla_nodes, int(idx*3+0)).xy;
+    res.data[1] = texelFetch(rt_tla_nodes, int(idx*3+1)).xy;
+    res.data[2] = texelFetch(rt_tla_nodes, int(idx*3+2)).xy;
+    return res;
+}
+
+struct TlBvhNode {
+    vec3 box_min;
+    vec3 box_max;
+
+    uint left_idx;  // 0 if leaf
+    uint right_idx; // Also prim idx for leaves
+
+    uint sibling_idx;
+    uint parent_idx;
+
+    uint dir_bits;
+};
+
+TlBvhNode unpack_tl_bvh_node(PackedTlBvhNode node) {
+    TlBvhNode res;
+    res.dir_bits = 0;
+    res.dir_bits |= (node.data[0].x & 3u);
+    res.dir_bits |= (node.data[0].y & 3u) << 2u;
+    res.dir_bits |= (node.data[1].x & 3u) << 4u;
+    res.box_min = vec3(uintBitsToFloat(node.data[0]), uintBitsToFloat(node.data[1].x));
+    vec3 box_extent = rgb9e5_to_float3(node.data[1].y);
+    res.box_max = res.box_min + box_extent;
+
+    res.left_idx = node.data[2].x & 0xffffu;
+    res.right_idx = node.data[2].x >> 16u;
+
+    res.sibling_idx = node.data[2].y & 0xffffu;
+    res.parent_idx = node.data[2].y >> 16u;
+
+    return res;
+}
+
+bool raytrace(Ray r, inout RtHit hit) {
+    uint node_idx = 0;
+    uint stack = 0;
+    int result = 0;
+
+    uint dir_bit_mask = 0;
+    {
+        vec3 absdir = abs(r.d);
+        float maxcomp = max(absdir.x, max(absdir.y, absdir.z));
+        uint dir_bit_idx = 0;
+        if (absdir.x == maxcomp) {
+            dir_bit_idx = r.d.x > 0.0 ? 0 : 1;
+        } else if (absdir.y == maxcomp) {
+            dir_bit_idx = r.d.y > 0.0 ? 2 : 3;
+        } else if (absdir.z == maxcomp) {
+            dir_bit_idx = r.d.z > 0.0 ? 4 : 5;
+        }
+        dir_bit_mask = 1u << dir_bit_idx;
     }
-    return result;
+
+    uint iter = 0;
+    for (; iter < 1024; ++iter) {
+        TlBvhNode node = unpack_tl_bvh_node(get_tl_bvh_node(node_idx));
+        uint child_idx = (node.dir_bits & dir_bit_mask) == 0 ? node.left_idx : node.right_idx;
+        bool is_leaf = node.left_idx == 0;
+
+        bool intersects_box = intersect_ray_aabb(r, node.box_min, node.box_max, hit.t);
+
+        if (intersects_box && is_leaf) {
+            result |= int(raytrace_bl(r, node.right_idx, hit));
+        }
+
+        if (!is_leaf && intersects_box)
+        {
+            // Go down
+            node_idx = child_idx;
+            stack <<= 1u; // Push 0
+        } else {
+            // While this is the second child visited at a given level, go up
+            uint parent_idx = node.parent_idx;
+            uint sibling_idx = node.sibling_idx;
+
+            while ((stack & 1) != 0) {
+                node_idx = parent_idx;
+
+                #if 0
+                    TlBvhNode partial_node = unpack_tl_bvh_node(get_tl_bvh_node(node_idx));
+                    parent_idx = partial_node.parent_idx;
+                    sibling_idx = partial_node.sibling_idx;
+                #else
+                    uint data2 = texelFetch(rt_tla_nodes_b, int(node_idx)).x;
+                    sibling_idx = data2 & 0xffffu;
+                    parent_idx = data2 >> 16u;
+                #endif
+
+                stack >>= 1;    // Pop
+            }
+
+            node_idx = sibling_idx;
+            stack |= 1;
+        }
+
+        if (0 == node_idx) {
+            break;
+        }
+    }
+
+    return bool(result);
+}
+
+bool raytrace_intersects_any(Ray r, float tmax) {
+    uint node_idx = 0;
+    uint stack = 0;
+
+    uint iter = 0;
+    for (; iter < 1024; ++iter) {
+        TlBvhNode node = unpack_tl_bvh_node(get_tl_bvh_node(node_idx));
+
+        bool intersects_box = intersect_ray_aabb(r, node.box_min, node.box_max, tmax);
+        bool is_leaf = node.left_idx == 0;
+
+        if (intersects_box && is_leaf) {
+            if (raytrace_intersects_any_bl(r, node.right_idx, tmax)) {
+                return true;
+            }
+        }
+
+        if (!is_leaf && intersects_box)
+        {
+            // Go down
+            node_idx = node.left_idx;
+            stack <<= 1u; // Push 0
+        } else {
+            // While this is the second child visited at a given level, go up
+            uint parent_idx = node.parent_idx;
+            uint sibling_idx = node.sibling_idx;
+
+            while ((stack & 1) != 0) {
+                node_idx = parent_idx;
+
+                #if 0
+                    TlBvhNode partial_node = unpack_tl_bvh_node(get_tl_bvh_node(node_idx));
+                    parent_idx = partial_node.parent_idx;
+                    sibling_idx = partial_node.sibling_idx;
+                #else
+                    uint data2 = texelFetch(rt_tla_nodes_b, int(node_idx)).x;
+                    sibling_idx = data2 & 0xffffu;
+                    parent_idx = data2 >> 16u;
+                #endif
+
+                stack >>= 1;    // Pop
+            }
+
+            node_idx = sibling_idx;
+            stack |= 1;
+        }
+
+        if (0 == node_idx) {
+            break;
+        }
+    }
+
+    return false;
 }
 
 bool raytrace_intersects_any(Ray r) {
