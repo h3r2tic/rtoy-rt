@@ -584,10 +584,10 @@ pub fn upload_bvh(
     let bl_count = tla_data.len() as u32;
 
     Ok(shader_uniforms!(
-        "rt_tla_buf": upload_array_buffer(Box::new(tla_data)),
-        "rt_tla_meta_buf": upload_buffer(bl_count),
-        "rt_tla_root_boxes": upload_array_buffer(Box::new(bl_root_boxes)),
-        "rt_tla_nodes": upload_array_tex_buffer(Box::new(tl_bvh_packed), gl::RG32UI),
-        "rt_tla_nodes_b": upload_array_tex_buffer(Box::new(tl_bvh_packed_b), gl::R32UI),
+        rt_tla_buf: upload_array_buffer(Box::new(tla_data)),
+        rt_tla_meta_buf: upload_buffer(bl_count),
+        rt_tla_root_boxes: upload_array_buffer(Box::new(bl_root_boxes)),
+        rt_tla_nodes: upload_array_tex_buffer(Box::new(tl_bvh_packed), gl::RG32UI),
+        rt_tla_nodes_b: upload_array_tex_buffer(Box::new(tl_bvh_packed_b), gl::R32UI),
     ))
 }
