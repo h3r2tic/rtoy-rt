@@ -147,15 +147,15 @@ bool intersect_ray_tri(Ray r, Triangle tri, inout float t, inout vec3 barycentri
     vec3 pv = cross(r.d, tri.e1);
     float det = dot(tri.e0, pv);
 
-    const bool cull_backface = false;
+    const bool cull_backface = true;
+    bool passed_face_culling = (cull_backface && det > 1e-10) || !cull_backface;
 
-    if ((cull_backface && det > 1e-10) || !cull_backface)
     {
     	vec3 tv = r.o - tri.v;
     	vec3 qv = cross(tv, tri.e0);
 
         float hit_t = dot(tri.e1, qv) / det;
-        if (hit_t >= 0.0 && hit_t < t) {
+        if (hit_t >= 0.0 && hit_t < t && passed_face_culling) {
         	vec3 uvw;
         	uvw.x = dot(tv, pv);
         	uvw.y = dot(r.d, qv);
