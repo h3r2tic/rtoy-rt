@@ -6,6 +6,7 @@ edition = "2018"
 
 [dependencies]
 rendertoy = { git = "https://github.com/h3r2tic/rendertoy" }
+snoozy = { git = "https://github.com/h3r2tic/snoozy" }
 snoozy-macros = { git = "https://github.com/h3r2tic/snoozy-macros" }
 bvh = { git = "https://github.com/h3r2tic/bvh", branch = "immutable-build" }
 static_assertions = "1.0"

@@ -250,8 +250,8 @@ pub struct GpuBlBvh {
 }
 
 #[snoozy]
-pub fn build_gpu_bvh(ctx: &mut Context, mesh: &SnoozyRef<TriangleMesh>) -> Result<GpuBlBvh> {
-    let mesh = ctx.get(mesh)?;
+pub async fn build_gpu_bvh(ctx: &mut Context, mesh: &SnoozyRef<TriangleMesh>) -> Result<GpuBlBvh> {
+    let mesh = ctx.get(mesh).await?;
     let aabbs: Vec<AABB> = mesh
         .indices
         .chunks(3)
@@ -335,8 +335,8 @@ struct BlBvh {
 }
 
 #[snoozy]
-fn upload_bl_bvh(ctx: &mut Context, bvh: &SnoozyRef<GpuBlBvh>) -> Result<BlBvh> {
-    let bvh = ctx.get(bvh)?;
+async fn upload_bl_bvh(ctx: &mut Context, bvh: &SnoozyRef<GpuBlBvh>) -> Result<BlBvh> {
+    let bvh = ctx.get(bvh).await?;
 
     let nodes = ArcView::new(&bvh, |n| &n.nodes);
     let triangles = ArcView::new(&bvh, |n| &n.triangles);
@@ -497,7 +497,7 @@ fn convert_tl_bvh(node: usize, nbox: &AABB, nodes: &[BVHNode], res: &mut Vec<TlB
 }
 
 #[snoozy]
-pub fn upload_bvh(
+pub async fn upload_bvh(
     ctx: &mut Context,
     scene: &Vec<(SnoozyRef<TriangleMesh>, Vector3, UnitQuaternion)>,
 ) -> Result<ShaderUniformBundle> {
@@ -507,15 +507,15 @@ pub fn upload_bvh(
 
     for (mesh, offset, rotation) in scene.iter() {
         let bvh = build_gpu_bvh(mesh.clone());
-        let root_aabb = ctx.get(bvh.clone())?.aabb;
+        let root_aabb = ctx.get(bvh.clone()).await?.aabb;
         let root_aabb = AABB::with_bounds(root_aabb.0.into(), root_aabb.1.into());
 
         if !root_aabb.is_empty() {
-            let mesh = ctx.get(upload_bl_bvh(bvh))?;
+            let mesh = ctx.get(upload_bl_bvh(bvh)).await?;
 
-            let meta_buf = ctx.get(&mesh.meta_buf)?;
-            let tri_buf = ctx.get(&mesh.tri_buf)?;
-            let bvh_buf = ctx.get(&mesh.bvh_buf)?;
+            let meta_buf = ctx.get(&mesh.meta_buf).await?;
+            let tri_buf = ctx.get(&mesh.tri_buf).await?;
+            let bvh_buf = ctx.get(&mesh.bvh_buf).await?;
 
             tla_data.push(GpuBlBvhHeader {
                 meta_buf: meta_buf.bindless_texture_handle.unwrap(),
