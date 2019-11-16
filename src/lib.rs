@@ -250,7 +250,7 @@ pub struct GpuBlBvh {
 }
 
 #[snoozy]
-pub async fn build_gpu_bvh(ctx: &mut Context, mesh: &SnoozyRef<TriangleMesh>) -> Result<GpuBlBvh> {
+pub async fn build_gpu_bvh(ctx: &Context, mesh: &SnoozyRef<TriangleMesh>) -> Result<GpuBlBvh> {
     let mesh = ctx.get(mesh).await?;
     let aabbs: Vec<AABB> = mesh
         .indices
@@ -335,7 +335,7 @@ struct BlBvh {
 }
 
 #[snoozy]
-async fn upload_bl_bvh(ctx: &mut Context, bvh: &SnoozyRef<GpuBlBvh>) -> Result<BlBvh> {
+async fn upload_bl_bvh(ctx: &Context, bvh: &SnoozyRef<GpuBlBvh>) -> Result<BlBvh> {
     let bvh = ctx.get(bvh).await?;
 
     let nodes = ArcView::new(&bvh, |n| &n.nodes);
@@ -498,7 +498,7 @@ fn convert_tl_bvh(node: usize, nbox: &AABB, nodes: &[BVHNode], res: &mut Vec<TlB
 
 #[snoozy]
 pub async fn upload_bvh(
-    ctx: &mut Context,
+    ctx: &Context,
     scene: &Vec<(SnoozyRef<TriangleMesh>, Vector3, UnitQuaternion)>,
 ) -> Result<ShaderUniformBundle> {
     let mut tla_data = Vec::with_capacity(scene.len());
