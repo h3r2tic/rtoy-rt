@@ -341,10 +341,10 @@ async fn upload_bl_bvh(ctx: Context, bvh: &SnoozyRef<GpuBlBvh>) -> Result<BlBvh>
     let nodes = ArcView::new(&bvh, |n| &n.nodes);
     let triangles = ArcView::new(&bvh, |n| &n.triangles);
 
-    let meta_buf = upload_array_tex_buffer(Box::new(vec![(nodes.len() / 6) as u32]), gl::R32UI);
+    let meta_buf = upload_array_tex_buffer(Box::new(vec![(nodes.len() / 6) as u32]), vk::Format::R32_UINT);
 
-    let tri_buf = upload_array_tex_buffer(triangles, gl::RG32UI);
-    let bvh_buf = upload_array_tex_buffer(nodes, gl::RGBA32UI);
+    let tri_buf = upload_array_tex_buffer(triangles, vk::Format::R32G32_UINT);
+    let bvh_buf = upload_array_tex_buffer(nodes, vk::Format::R32G32B32A32_UINT);
 
     Ok(BlBvh {
         meta_buf,
@@ -587,7 +587,7 @@ pub async fn upload_bvh(
         rt_tla_buf: upload_array_buffer(Box::new(tla_data)),
         rt_tla_meta_buf: upload_buffer(bl_count),
         rt_tla_root_boxes: upload_array_buffer(Box::new(bl_root_boxes)),
-        rt_tla_nodes: upload_array_tex_buffer(Box::new(tl_bvh_packed), gl::RG32UI),
-        rt_tla_nodes_b: upload_array_tex_buffer(Box::new(tl_bvh_packed_b), gl::R32UI),
+        rt_tla_nodes: upload_array_tex_buffer(Box::new(tl_bvh_packed), vk::Format::R32G32_UINT),
+        rt_tla_nodes_b: upload_array_tex_buffer(Box::new(tl_bvh_packed_b), vk::Format::R32_UINT),
     ))
 }
