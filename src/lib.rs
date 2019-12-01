@@ -341,7 +341,10 @@ async fn upload_bl_bvh(ctx: Context, bvh: &SnoozyRef<GpuBlBvh>) -> Result<BlBvh>
     let nodes = ArcView::new(&bvh, |n| &n.nodes);
     let triangles = ArcView::new(&bvh, |n| &n.triangles);
 
-    let meta_buf = upload_array_tex_buffer(Box::new(vec![(nodes.len() / 6) as u32]), vk::Format::R32_UINT);
+    let meta_buf = upload_array_tex_buffer(
+        Box::new(vec![(nodes.len() / 6) as u32]),
+        vk::Format::R32_UINT,
+    );
 
     let tri_buf = upload_array_tex_buffer(triangles, vk::Format::R32G32_UINT);
     let bvh_buf = upload_array_tex_buffer(nodes, vk::Format::R32G32B32A32_UINT);
@@ -358,9 +361,9 @@ async fn upload_bl_bvh(ctx: Context, bvh: &SnoozyRef<GpuBlBvh>) -> Result<BlBvh>
 #[derive(Clone, Copy, Abomonation)]
 struct GpuBlBvhHeader {
     // Resident texture handles
-    meta_buf: u64,
-    tri_buf: u64,
-    bvh_buf: u64,
+    meta_buf: u32,
+    tri_buf: u32,
+    bvh_buf: u32,
     offset: [f32; 3],
     rotation: [f32; 4],
 }
@@ -518,9 +521,9 @@ pub async fn upload_bvh(
             let bvh_buf = ctx.get(&mesh.bvh_buf).await?;
 
             tla_data.push(GpuBlBvhHeader {
-                meta_buf: meta_buf.bindless_texture_handle.unwrap(),
-                tri_buf: tri_buf.bindless_texture_handle.unwrap(),
-                bvh_buf: bvh_buf.bindless_texture_handle.unwrap(),
+                meta_buf: meta_buf.bindless_index,
+                tri_buf: tri_buf.bindless_index,
+                bvh_buf: bvh_buf.bindless_index,
                 offset: (*offset).into(),
                 rotation: rotation.quaternion().as_vector().clone().into(),
             });
