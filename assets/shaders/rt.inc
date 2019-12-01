@@ -2,7 +2,7 @@
 #define INVALID_TRIANGLE_INDEX 0xffffff
 
 // TODO: put this in a central location, and figure out how to reserve "set"
-layout(set = 1, binding = 0) uniform usamplerBuffer all_buffers[];
+layout(set = 31, binding = 0) uniform usamplerBuffer all_buffers[];
 
 struct PackedBlBvhNode {
     uvec4 data;
