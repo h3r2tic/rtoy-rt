@@ -211,11 +211,7 @@ vec3 qtransform(vec4 q, vec3 v) {
     return v + 2.0 * cross(q.xyz, cross(q.xyz, v) + q.w * v);
 } 
 
-bool raytrace_bl(Ray r, uint bl_idx, inout RtHit hit) {
-    BlBvhHeader bl_header = bl_headers[bl_idx];
-    //usamplerBuffer bvh_sampler = all_buffers[nonuniformEXT(bl_header.bvh_buf_sampler)];
-    //usamplerBuffer tri_sampler = all_buffers[nonuniformEXT(bl_header.tri_buf_sampler)];
-
+bool raytrace_bl(BlBvhHeader bl_header, usamplerBuffer bvh_sampler, usamplerBuffer tri_sampler, uint tri_sampler_idx, Ray r, uint bl_idx, inout RtHit hit) {
     vec4 rotation = vec4(bl_header.rotation[0], bl_header.rotation[1], bl_header.rotation[2], bl_header.rotation[3]);
     vec4 inv_rotation = quat_conj(rotation);
     r.o -= vec3(bl_header.offset[0], bl_header.offset[1], bl_header.offset[2]);
@@ -245,13 +241,13 @@ bool raytrace_bl(Ray r, uint bl_idx, inout RtHit hit) {
 
     uint iter = 0;
     for (; iter < 1024 && node_idx < end_idx; ++iter) {
-        BlBvhNode node = unpack_bl_bvh_node(get_bl_bvh_node(all_buffers[nonuniformEXT(bl_header.bvh_buf_sampler)], node_idx));
+        BlBvhNode node = unpack_bl_bvh_node(get_bl_bvh_node(bvh_sampler, node_idx));
         bool intersects_box = intersect_ray_aabb(r, node.box_min, node.box_max, tmin);
 
         bool is_leaf = node.prim_idx != INVALID_TRIANGLE_INDEX;
 
         if (intersects_box && is_leaf) {
-            Triangle tri = unpack_triangle(get_bvh_triangle(all_buffers[nonuniformEXT(bl_header.tri_buf_sampler)], node.prim_idx));
+            Triangle tri = unpack_triangle(get_bvh_triangle(tri_sampler, node.prim_idx));
             if (intersect_ray_tri(r, tri, tmin, barycentric)) {
                 hit_tri = node.prim_idx;
                 hit_normal = cross(tri.e0, tri.e1);
@@ -271,7 +267,7 @@ bool raytrace_bl(Ray r, uint bl_idx, inout RtHit hit) {
         hit.t = tmin;
         hit.barycentric = barycentric;
         hit.tri_idx = hit_tri;
-        hit.tri_sampler_idx = bl_header.tri_buf_sampler;
+        hit.tri_sampler_idx = tri_sampler_idx;
         hit.normal = normalize(qtransform(rotation, hit_normal));
         return true;
     }
@@ -279,11 +275,19 @@ bool raytrace_bl(Ray r, uint bl_idx, inout RtHit hit) {
     return false;
 }
 
-bool raytrace_intersects_any_bl(Ray r, uint bl_idx, float tmax) {
+bool raytrace_bl(Ray r, uint bl_idx, inout RtHit hit) {
     BlBvhHeader bl_header = bl_headers[bl_idx];
-    //nonuniformEXT usamplerBuffer bvh_sampler = all_buffers[nonuniformEXT(bl_header.bvh_buf_sampler)];
-    //nonuniformEXT usamplerBuffer tri_sampler = all_buffers[nonuniformEXT(bl_header.tri_buf_sampler)];
+    return raytrace_bl(
+        bl_header,
+        all_buffers[nonuniformEXT(bl_header.bvh_buf_sampler)],
+        all_buffers[nonuniformEXT(bl_header.tri_buf_sampler)],
+        bl_header.tri_buf_sampler,
+        r,
+        bl_idx,
+        hit);
+}
 
+bool raytrace_intersects_any_bl(BlBvhHeader bl_header, usamplerBuffer bvh_sampler, usamplerBuffer tri_sampler, Ray r, uint bl_idx, float tmax) {
     vec4 rotation = vec4(bl_header.rotation[0], bl_header.rotation[1], bl_header.rotation[2], bl_header.rotation[3]);
     vec4 inv_rotation = quat_conj(rotation);
     r.o -= vec3(bl_header.offset[0], bl_header.offset[1], bl_header.offset[2]);
@@ -308,13 +312,13 @@ bool raytrace_intersects_any_bl(Ray r, uint bl_idx, float tmax) {
     
     uint iter = 0;
     for (; iter < 1024 && node_idx < end_idx; ++iter) {
-        BlBvhNode node = unpack_bl_bvh_node(get_bl_bvh_node(all_buffers[nonuniformEXT(bl_header.bvh_buf_sampler)], node_idx));
+        BlBvhNode node = unpack_bl_bvh_node(get_bl_bvh_node(bvh_sampler, node_idx));
         bool intersects_box = intersect_ray_aabb(r, node.box_min, node.box_max, tmax);
         bool is_leaf = node.prim_idx != INVALID_TRIANGLE_INDEX;
 
         if (intersects_box && is_leaf) {
             vec3 barycentric;
-            if (intersect_ray_tri(r, unpack_triangle(get_bvh_triangle(all_buffers[nonuniformEXT(bl_header.tri_buf_sampler)], node.prim_idx)), tmax, barycentric)) {
+            if (intersect_ray_tri(r, unpack_triangle(get_bvh_triangle(tri_sampler, node.prim_idx)), tmax, barycentric)) {
                 return true;
             }
         }
@@ -327,6 +331,17 @@ bool raytrace_intersects_any_bl(Ray r, uint bl_idx, float tmax) {
     }
 
     return false;
+}
+
+bool raytrace_intersects_any_bl(Ray r, uint bl_idx, float tmax) {
+    BlBvhHeader bl_header = bl_headers[bl_idx];
+    return raytrace_intersects_any_bl(
+        bl_header,
+        all_buffers[nonuniformEXT(bl_header.bvh_buf_sampler)],
+        all_buffers[nonuniformEXT(bl_header.tri_buf_sampler)],
+        r,
+        bl_idx,
+        tmax);
 }
 
 uniform usamplerBuffer rt_tla_nodes;
