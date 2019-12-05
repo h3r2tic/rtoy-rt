@@ -1,8 +1,7 @@
 #extension GL_EXT_nonuniform_qualifier: require
 #define INVALID_TRIANGLE_INDEX 0xffffff
 
-// TODO: put this in a central location, and figure out how to reserve "set"
-layout(set = 31, binding = 0) uniform usamplerBuffer all_buffers[];
+#include "rendertoy::shaders/bindless.inc"
 
 struct PackedBlBvhNode {
     uvec4 data;
