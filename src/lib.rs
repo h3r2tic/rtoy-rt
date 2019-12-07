@@ -287,7 +287,7 @@ pub async fn build_gpu_bvh(ctx: Context, mesh: &SnoozyRef<TriangleMesh>) -> Resu
     ordered_flatten_bl_bvh!(orderings.4, bvh, bvh_nodes);
     ordered_flatten_bl_bvh!(orderings.5, bvh, bvh_nodes);
 
-    println!("BVH flattened in {:?}", time0.elapsed());
+    tracing::info!("BVH flattened in {:?}", time0.elapsed());
     let time0 = std::time::Instant::now();
 
     let aabb = bvh_nodes.iter().fold(AABB::empty(), |a, b| {
@@ -319,7 +319,7 @@ pub async fn build_gpu_bvh(ctx: Context, mesh: &SnoozyRef<TriangleMesh>) -> Resu
         })
         .collect::<Vec<_>>();
 
-    println!("BVH encoded in {:?}", time0.elapsed());
+    tracing::info!("BVH encoded in {:?}", time0.elapsed());
 
     Ok(GpuBlBvh {
         nodes: gpu_bvh_nodes,
