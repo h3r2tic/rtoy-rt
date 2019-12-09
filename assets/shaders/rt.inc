@@ -75,21 +75,8 @@ struct BlBvhHeader {
     float rotation[4];
 };
 
-layout(std430) buffer rt_tla_meta_buf {
-    uint bl_count;
-};
-
 layout(std430) buffer rt_tla_buf {
     BlBvhHeader bl_headers[];
-};
-
-struct RootBox {
-    float pmin[3];
-    float pmax[3];
-};
-
-layout(std430) buffer rt_tla_root_boxes {
-    RootBox bl_root_boxes[];
 };
 
 uniform usamplerBuffer bvh_meta_buf;

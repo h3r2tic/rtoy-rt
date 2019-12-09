@@ -579,17 +579,8 @@ pub async fn upload_bvh(
             | ((b.bbox_min[0] & 3) << 4)) as u16;
     }*/
 
-    let bl_root_boxes: Vec<([f32; 3], [f32; 3])> = bl_root_boxes
-        .iter()
-        .map(|b| (b.min.coords.into(), b.max.coords.into()))
-        .collect();
-
-    let bl_count = tla_data.len() as u32;
-
     Ok(shader_uniforms!(
         rt_tla_buf: upload_array_buffer(Box::new(tla_data)),
-        rt_tla_meta_buf: upload_buffer(bl_count),
-        rt_tla_root_boxes: upload_array_buffer(Box::new(bl_root_boxes)),
         rt_tla_nodes: upload_array_tex_buffer(Box::new(tl_bvh_packed), vk::Format::R32G32_UINT),
         rt_tla_nodes_b: upload_array_tex_buffer(Box::new(tl_bvh_packed_b), vk::Format::R32_UINT),
     ))
