@@ -249,7 +249,7 @@ pub struct GpuBlBvh {
     aabb: ([f32; 3], [f32; 3]),
 }
 
-#[snoozy]
+#[snoozy(cache)]
 pub async fn build_gpu_bvh(ctx: Context, mesh: &SnoozyRef<TriangleMesh>) -> Result<GpuBlBvh> {
     let mesh = ctx.get(mesh).await?;
     let aabbs: Vec<AABB> = mesh
