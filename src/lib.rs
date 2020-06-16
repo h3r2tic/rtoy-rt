@@ -90,20 +90,20 @@ pub fn f32_to_f16_negbias(value: f32) -> u16 {
     }
 }
 
-fn pack_bbox_extent_9e5(extent: Vector3) -> u32 {
-    pack_rgb9e5_roundup(extent.x, extent.y, extent.z)
+fn pack_bbox_extent_9e5(extent: Vec3) -> u32 {
+    pack_rgb9e5_roundup(extent.x(), extent.y(), extent.z())
 }
 
 fn pack_gpu_bvh_node(node: BlBvhNode) -> GpuBlBvhNode {
     let bmin = (
-        half::f16::from_bits(f32_to_f16_negbias(node.bbox_min.x)),
-        half::f16::from_bits(f32_to_f16_negbias(node.bbox_min.y)),
-        half::f16::from_bits(f32_to_f16_negbias(node.bbox_min.z)),
+        half::f16::from_bits(f32_to_f16_negbias(node.bbox_min.x())),
+        half::f16::from_bits(f32_to_f16_negbias(node.bbox_min.y())),
+        half::f16::from_bits(f32_to_f16_negbias(node.bbox_min.z())),
     );
 
     let box_extent_packed = {
         // The fp16 was rounded-down, so extent will be larger than for fp32
-        let extent = node.bbox_max - Point3::new(bmin.0.to_f32(), bmin.1.to_f32(), bmin.2.to_f32());
+        let extent = node.bbox_max - Vec3::new(bmin.0.to_f32(), bmin.1.to_f32(), bmin.2.to_f32());
 
         pack_bbox_extent_9e5(extent)
     };
@@ -122,14 +122,14 @@ fn pack_gpu_bvh_node(node: BlBvhNode) -> GpuBlBvhNode {
 }
 
 pub struct BlBvhNode {
-    bbox_min: Point3,
+    bbox_min: Vec3,
     exit_idx: u32,
-    bbox_max: Point3,
+    bbox_max: Vec3,
     prim_idx: u32,
 }
 
 impl BlBvhNode {
-    fn new_leaf(bbox_min: Point3, bbox_max: Point3, prim_idx: usize) -> Self {
+    fn new_leaf(bbox_min: Vec3, bbox_max: Vec3, prim_idx: usize) -> Self {
         Self {
             bbox_min,
             exit_idx: 0,
@@ -138,7 +138,7 @@ impl BlBvhNode {
         }
     }
 
-    fn new_interior(bbox_min: Point3, bbox_max: Point3) -> Self {
+    fn new_interior(bbox_min: Vec3, bbox_max: Vec3) -> Self {
         Self {
             bbox_min,
             exit_idx: 0,
@@ -260,9 +260,9 @@ pub async fn build_gpu_bvh_snoozy(
         .chunks(3)
         .map(|t| {
             AABB::empty()
-                .grow(&Point3::from(mesh.positions[t[0] as usize]))
-                .grow(&Point3::from(mesh.positions[t[1] as usize]))
-                .grow(&Point3::from(mesh.positions[t[2] as usize]))
+                .grow(&Vec3::from(mesh.positions[t[0] as usize]))
+                .grow(&Vec3::from(mesh.positions[t[1] as usize]))
+                .grow(&Vec3::from(mesh.positions[t[2] as usize]))
         })
         .collect();
 
@@ -271,12 +271,12 @@ pub async fn build_gpu_bvh_snoozy(
     //println!("BVH with {} triangles built in {:?}", aabbs.len(), time0.elapsed());
 
     let orderings = (
-        |a: &AABB, b: &AABB| a.min.x + a.max.x < b.min.x + b.max.x,
-        |a: &AABB, b: &AABB| a.min.x + a.max.x > b.min.x + b.max.x,
-        |a: &AABB, b: &AABB| a.min.y + a.max.y < b.min.y + b.max.y,
-        |a: &AABB, b: &AABB| a.min.y + a.max.y > b.min.y + b.max.y,
-        |a: &AABB, b: &AABB| a.min.z + a.max.z < b.min.z + b.max.z,
-        |a: &AABB, b: &AABB| a.min.z + a.max.z > b.min.z + b.max.z,
+        |a: &AABB, b: &AABB| a.min.x() + a.max.x() < b.min.x() + b.max.x(),
+        |a: &AABB, b: &AABB| a.min.x() + a.max.x() > b.min.x() + b.max.x(),
+        |a: &AABB, b: &AABB| a.min.y() + a.max.y() < b.min.y() + b.max.y(),
+        |a: &AABB, b: &AABB| a.min.y() + a.max.y() > b.min.y() + b.max.y(),
+        |a: &AABB, b: &AABB| a.min.z() + a.max.z() < b.min.z() + b.max.z(),
+        |a: &AABB, b: &AABB| a.min.z() + a.max.z() > b.min.z() + b.max.z(),
     );
 
     let time0 = std::time::Instant::now();
@@ -303,20 +303,20 @@ pub async fn build_gpu_bvh_snoozy(
         .indices
         .chunks(3)
         .map(|t| {
-            let v0 = Point3::from(mesh.positions[t[0] as usize]);
-            let v1 = Point3::from(mesh.positions[t[1] as usize]);
-            let v2 = Point3::from(mesh.positions[t[2] as usize]);
+            let v0 = Vec3::from(mesh.positions[t[0] as usize]);
+            let v1 = Vec3::from(mesh.positions[t[1] as usize]);
+            let v2 = Vec3::from(mesh.positions[t[2] as usize]);
             let e0 = v1 - v0;
             let e1 = v2 - v0;
             GpuTriangle {
-                v: (v0.x, v0.y, v0.z),
+                v: (v0.x(), v0.y(), v0.z()),
                 e0_e1: (
-                    ((half::f16::from_f32(e0.x).to_bits() as u32) << 16)
-                        | (half::f16::from_f32(e1.x).to_bits() as u32),
-                    ((half::f16::from_f32(e0.y).to_bits() as u32) << 16)
-                        | (half::f16::from_f32(e1.y).to_bits() as u32),
-                    ((half::f16::from_f32(e0.z).to_bits() as u32) << 16)
-                        | (half::f16::from_f32(e1.z).to_bits() as u32),
+                    ((half::f16::from_f32(e0.x()).to_bits() as u32) << 16)
+                        | (half::f16::from_f32(e1.x()).to_bits() as u32),
+                    ((half::f16::from_f32(e0.y()).to_bits() as u32) << 16)
+                        | (half::f16::from_f32(e1.y()).to_bits() as u32),
+                    ((half::f16::from_f32(e0.z()).to_bits() as u32) << 16)
+                        | (half::f16::from_f32(e1.z()).to_bits() as u32),
                 ),
             }
         })
@@ -327,7 +327,7 @@ pub async fn build_gpu_bvh_snoozy(
     Ok(GpuBlBvh {
         nodes: gpu_bvh_nodes,
         triangles: bvh_triangles,
-        aabb: (aabb.min.coords.into(), aabb.max.coords.into()),
+        aabb: (aabb.min.into(), aabb.max.into()),
     })
 }
 
@@ -392,8 +392,8 @@ struct TlBvhNodeB {
 }
 
 impl TlBvhNode {
-    fn new_leaf(bbox_min: Point3, bbox_max: Point3, prim_idx: usize) -> Self {
-        let bbox_min_arr: [f32; 3] = bbox_min.coords.into();
+    fn new_leaf(bbox_min: Vec3, bbox_max: Vec3, prim_idx: usize) -> Self {
+        let bbox_min_arr: [f32; 3] = bbox_min.into();
         Self {
             bbox_min: [
                 bbox_min_arr[0].to_bits(),
@@ -408,8 +408,8 @@ impl TlBvhNode {
         }
     }
 
-    fn new_interior(bbox_min: Point3, bbox_max: Point3) -> Self {
-        let bbox_min_arr: [f32; 3] = bbox_min.coords.into();
+    fn new_interior(bbox_min: Vec3, bbox_max: Vec3) -> Self {
+        let bbox_min_arr: [f32; 3] = bbox_min.into();
         Self {
             bbox_min: [
                 bbox_min_arr[0].to_bits() & !3u32,
@@ -468,12 +468,12 @@ fn convert_tl_bvh(node: usize, nbox: &AABB, nodes: &[BVHNode], res: &mut Vec<TlB
         let indices = [n.child_l(), n.child_r()];
 
         let orderings = [
-            boxes[0].min.x + boxes[0].max.x < boxes[1].min.x + boxes[1].max.x,
-            boxes[0].min.x + boxes[0].max.x > boxes[1].min.x + boxes[1].max.x,
-            boxes[0].min.y + boxes[0].max.y < boxes[1].min.y + boxes[1].max.y,
-            boxes[0].min.y + boxes[0].max.y > boxes[1].min.y + boxes[1].max.y,
-            boxes[0].min.z + boxes[0].max.z < boxes[1].min.z + boxes[1].max.z,
-            boxes[0].min.z + boxes[0].max.z > boxes[1].min.z + boxes[1].max.z,
+            boxes[0].min.x() + boxes[0].max.x() < boxes[1].min.x() + boxes[1].max.x(),
+            boxes[0].min.x() + boxes[0].max.x() > boxes[1].min.x() + boxes[1].max.x(),
+            boxes[0].min.y() + boxes[0].max.y() < boxes[1].min.y() + boxes[1].max.y(),
+            boxes[0].min.y() + boxes[0].max.y() > boxes[1].min.y() + boxes[1].max.y(),
+            boxes[0].min.z() + boxes[0].max.z() < boxes[1].min.z() + boxes[1].max.z(),
+            boxes[0].min.z() + boxes[0].max.z() > boxes[1].min.z() + boxes[1].max.z(),
         ];
 
         let ordering_bits_for_axis = |axis: usize| {
@@ -505,13 +505,16 @@ fn convert_tl_bvh(node: usize, nbox: &AABB, nodes: &[BVHNode], res: &mut Vec<TlB
 #[snoozy]
 pub async fn upload_bvh_snoozy(
     mut ctx: Context,
-    scene: &Vec<(SnoozyRef<TriangleMesh>, Vector3, UnitQuaternion)>,
+    scene: &Vec<(SnoozyRef<TriangleMesh>, Vec3, Quat)>,
 ) -> Result<ShaderUniformBundle> {
     let mut tla_data = Vec::with_capacity(scene.len());
     let mut bl_root_boxes: Vec<AABB> = Vec::with_capacity(scene.len());
     let mut total_aabb = AABB::empty();
 
     for (mesh, offset, rotation) in scene.iter() {
+        let offset = *offset;
+        let rotation = *rotation;
+
         let bvh = build_gpu_bvh(mesh.clone());
         let root_aabb = ctx.get(bvh.clone()).await?.aabb;
         let root_aabb = AABB::with_bounds(root_aabb.0.into(), root_aabb.1.into());
@@ -527,18 +530,22 @@ pub async fn upload_bvh_snoozy(
                 meta_buf: meta_buf.bindless_index,
                 tri_buf: tri_buf.bindless_index,
                 bvh_buf: bvh_buf.bindless_index,
-                offset: (*offset).into(),
-                rotation: rotation.quaternion().as_vector().clone().into(),
+                offset: offset.into(),
+                rotation: rotation.into(),
             });
 
             let xform_aabb = {
-                let center: Vector3 = root_aabb.center().coords;
-                let extent: Vector3 = root_aabb.size() * 0.5;
+                let center: Vec3 = root_aabb.center();
+                let extent: Vec3 = root_aabb.size() * 0.5;
 
-                let rot_matrix: Matrix3 = rotation.to_rotation_matrix().into();
+                let rot_matrix = Mat3::from_quat(rotation);
                 let rot_center = rot_matrix * center;
 
-                let abs_rot_matrix = rot_matrix.abs();
+                let abs_rot_matrix = Mat3::from_cols(
+                    rot_matrix.x_axis().abs(),
+                    rot_matrix.y_axis().abs(),
+                    rot_matrix.z_axis().abs(),
+                );
                 let rot_extent = abs_rot_matrix * extent;
 
                 AABB::with_bounds(
