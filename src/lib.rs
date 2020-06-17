@@ -268,7 +268,7 @@ pub async fn build_gpu_bvh_snoozy(
 
     //let time0 = std::time::Instant::now();
     let bvh = BVH::build(&aabbs);
-    //println!("BVH built in {:?}", time0.elapsed());
+    //println!("BVH with {} triangles built in {:?}", aabbs.len(), time0.elapsed());
 
     let orderings = (
         |a: &AABB, b: &AABB| a.min.x + a.max.x < b.min.x + b.max.x,
@@ -555,7 +555,7 @@ pub async fn upload_bvh_snoozy(
     let tl_bvh_packed = if !bl_root_boxes.is_empty() {
         //let time0 = std::time::Instant::now();
         let tl_bvh = BVH::build(&bl_root_boxes);
-        //println!("TL BVH built in {:?}", time0.elapsed());
+        //println!("TL BVH with {} objects built in {:?}", bl_root_boxes.len(), time0.elapsed());
 
         let mut tl_bvh_packed = Vec::with_capacity(tl_bvh.nodes.len());
         convert_tl_bvh(0, &total_aabb, &tl_bvh.nodes, &mut tl_bvh_packed);
